@@ -146,6 +146,17 @@ const API="https://api.finmindtrade.com/api/v4/data";
 const $=id=>document.getElementById(id);
 const view=$("view"), codeEl=$("code");
 const AS_OF="2026-07-16";
+/* 每日大盤分析（客觀中立、經查證；由每日排程更新）*/
+const MARKET={
+  asOf:"2026-07-16",
+  summary:"7/16 台股加權指數收 45,624.98 點、小跌 6.61 點，呈『權值撐盤、廣度轉弱』格局：台積電法說利多、開低走高收 2,470 元（+30）撐住指數，但上市櫃逾千家下跌、櫃買指數跌逾 2%。記憶體族群因美光重挫逾 8% 同步下殺（南亞科 −8%、群聯 −6%、旺宏 −8%）。市場資金與注意力集中於記憶體、散熱、IC 設計三賽道。",
+  pos:["台積電 Q2 法說 EPS 27.25 元創高、毛利率 67.7%，法說後外資調升目標價（花旗 3,800 元）","權值龍頭撐盤，指數維持相對高檔","AI 先進封裝／2 奈米需求延續，台積電未來三年資本支出顯著提高"],
+  neg:["市場廣度轉弱：逾千家下跌、櫃買跌逾 2%，靠少數權值撐盤","外資現貨賣超、台指期外資淨空單偏高（期現貨偏空）","記憶體漲多急跌（美光利空外溢），高基期族群震盪加大"],
+  items:[
+    {t:"千家下殺！台股巨震靠台積電收漲 30 元撐盤 押注法說行情",s:"中時新聞網",u:"https://www.chinatimes.com/realtimenews/20260716002788-260410"},
+    {t:"外資普遍看好台積電法說 目標價最高喊到 3,800 元",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6532182"}
+  ]
+};
 
 /* ============ 子板塊分類 ============ */
 const SECTORS=[
@@ -628,6 +639,15 @@ function renderHome(){
   view.innerHTML=`
     <div class="market" id="market"><div class="mh"><span>大盤風向 · 三大法人與台指期</span><span class="dt">載入中…</span></div>
       <div class="mtiles"><div class="note">載入中…</div></div></div>
+    <div class="panel">
+      <div class="panel-h"><span class="t">每日大盤分析</span><span class="meta">客觀中立 · 經查證 · 截至 ${MARKET.asOf}</span></div>
+      <p class="ai-sum">${MARKET.summary}</p>
+      <div class="ai-grid">
+        <div class="ai-box"><h5 class="drv">＋ 正面因子</h5><ul>${MARKET.pos.map(x=>`<li>${x}</li>`).join("")}</ul></div>
+        <div class="ai-box"><h5 class="rsk">－ 風險因子</h5><ul>${MARKET.neg.map(x=>`<li>${x}</li>`).join("")}</ul></div>
+      </div>
+      <ul class="news-list">${MARKET.items.map(it=>`<li><a href="${it.u}" target="_blank" rel="noopener">${it.t}</a><div class="src">${it.s} ↗</div></li>`).join("")}</ul>
+    </div>
     <div class="radar"><div class="mh" style="margin-bottom:10px"><span>AI 類股投信雷達</span></div>
       <div id="radar-body"><button class="radar-btn" id="radar-go">🔍 掃描 AI 類股投信動向（連買天數・累積買超）</button>
       <div class="note">掃描約 ${aiUniverse().length} 檔 AI 類股的投信買賣，找出連買天數最長與近20日買超最多者。</div></div></div>
