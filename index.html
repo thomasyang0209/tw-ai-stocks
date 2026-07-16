@@ -699,8 +699,8 @@ async function showDetail(code){
   view.innerHTML='<div class="status">載入中…</div>';
   try{
     const [info, price, per, rev, inst, hold, news] = await Promise.all([
-      fj("TaiwanStockInfo", code).catch(()=>[]),
-      fj("TaiwanStockPrice", code, monthsAgo(7)).catch(()=>[]),
+      fj("TaiwanStockInfo", code),
+      fj("TaiwanStockPrice", code, monthsAgo(7)),
       fj("TaiwanStockPER", code, daysAgo(20)).catch(()=>[]),
       fj("TaiwanStockMonthRevenue", code, monthsAgo(26)).catch(()=>[]),
       fj("TaiwanStockInstitutionalInvestorsBuySell", code, daysAgo(95)).catch(()=>[]),
