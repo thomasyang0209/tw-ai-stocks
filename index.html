@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台股 AI 類股動態</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#181c22; --panel2:#1f242c; --line:#2a3038;
+    --text:#e7ecf2; --muted:#8a94a3;
+    --up:#ef4d5a; --down:#26a269; --accent:#4f9dff;
+    --f-foreign:#4f9dff; --f-trust:#c07cff; --f-dealer:#f0883e; --f-price:#ffd24a;
+    --chip:#222834; --grid:rgba(255,255,255,.07);
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f4f6f9; --panel:#ffffff; --panel2:#f0f3f7; --line:#e2e6ec;
+      --text:#1a1f26; --muted:#6b7583;
+      --up:#d92d3a; --down:#0f8a56; --accent:#1f6fe0;
+      --f-foreign:#1f6fe0; --f-trust:#8a3fd1; --f-dealer:#d9720f; --f-price:#b98600;
+      --chip:#eef1f6; --grid:rgba(0,0,0,.07);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px; margin:0 auto; padding:26px 18px 70px}
+  h1{font-size:22px; margin:0; letter-spacing:.5px; cursor:pointer; display:inline-block}
+  .sub{color:var(--muted); font-size:13px; margin:4px 0 20px}
+  .searchbar{display:flex; gap:10px; margin-bottom:26px}
+  input{flex:1; min-width:0; background:var(--panel); border:1px solid var(--line); color:var(--text);
+    font-size:16px; padding:13px 15px; border-radius:11px; outline:none;}
+  input:focus{border-color:var(--accent)}
+  button.go{background:var(--accent); color:#fff; border:0; font-size:15px; font-weight:600; padding:0 22px; border-radius:11px; cursor:pointer; white-space:nowrap;}
+
+  /* 子板塊 */
+  .sectors{display:grid; grid-template-columns:repeat(2,1fr); gap:14px}
+  @media(max-width:720px){ .sectors{grid-template-columns:1fr} }
+  .sector{background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:16px 16px 14px}
+  .sector h3{margin:0 0 3px; font-size:15px}
+  .sector .d{color:var(--muted); font-size:12px; margin:0 0 11px; line-height:1.5}
+  .chips{display:flex; flex-wrap:wrap; gap:7px}
+  .chip{background:var(--chip); border:1px solid var(--line); border-radius:9px; padding:6px 10px; cursor:pointer; font-size:13px; line-height:1.2; transition:.12s}
+  .chip:hover{border-color:var(--accent); color:var(--accent)}
+  .chip .c{color:var(--muted); font-size:11px; margin-right:4px; font-variant-numeric:tabular-nums}
+  .chip:hover .c{color:var(--accent)}
+
+  /* 詳細頁 */
+  .back{display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:13px; cursor:pointer; margin-bottom:14px; background:none; border:0; padding:0}
+  .back:hover{color:var(--accent)}
+  .head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+  .head .code{font-size:28px; font-weight:700}
+  .head .name{font-size:21px}
+  .head .ind{color:var(--muted); font-size:13px; background:var(--chip); padding:3px 9px; border-radius:7px}
+  .head .px{margin-left:auto; text-align:right}
+  .head .px .p{font-size:24px; font-weight:700; font-variant-numeric:tabular-nums}
+  .head .px .dd{font-size:13px; font-variant-numeric:tabular-nums}
+  .cards{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px}
+  @media(max-width:640px){ .cards{grid-template-columns:repeat(2,1fr)} }
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:13px; padding:12px 13px}
+  .card .lbl{font-size:11.5px; color:var(--muted); margin-bottom:5px}
+  .card .val{font-size:18px; font-weight:700; font-variant-numeric:tabular-nums}
+  .card .cap{font-size:11px; color:var(--muted); margin-top:3px}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:18px}
+  .panel-h{display:flex; align-items:center; justify-content:space-between; margin:0 2px 6px; flex-wrap:wrap; gap:8px}
+  .panel-h .t{font-size:14px; font-weight:700}
+  .panel-h .meta{font-size:12px; color:var(--muted)}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin:8px 4px 0}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px}
+  .legend .li{width:14px; height:0; border-top:2px solid var(--f-price); margin-right:5px; vertical-align:3px; display:inline-block}
+  svg{width:100%; height:auto; display:block}
+  .chart-txt{fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums}
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums}
+  th,td{padding:9px 12px; text-align:right; font-size:13.5px; white-space:nowrap}
+  th{color:var(--muted); font-weight:600; font-size:12px}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr{border-top:1px solid var(--line)}
+  td.date{color:var(--muted); font-size:13px}
+  .pos{color:var(--up)} .neg{color:var(--down)}
+  /* 新聞 / AI 分析 */
+  .ai-sum{font-size:14px; line-height:1.75; margin:2px 2px 14px}
+  .ai-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media(max-width:640px){ .ai-grid{grid-template-columns:1fr} }
+  .ai-box{background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:12px 14px}
+  .ai-box h5{margin:0 0 8px; font-size:13px}
+  .ai-box h5.drv{color:var(--up)} .ai-box h5.rsk{color:var(--f-dealer)}
+  .ai-box ul{margin:0; padding-left:18px}
+  .ai-box li{font-size:13px; line-height:1.65; margin-bottom:4px}
+  .news-list{list-style:none; padding:0; margin:8px 0 0}
+  .news-list li{border-top:1px solid var(--line); padding:9px 2px}
+  .news-list a{color:var(--text); text-decoration:none; font-size:14px; line-height:1.5}
+  .news-list a:hover{color:var(--accent)}
+  .news-list .src{color:var(--muted); font-size:12px; margin-top:2px}
+  .links a{display:inline-block; margin:4px 10px 4px 0; color:var(--accent); text-decoration:none; font-size:13px}
+  /* 大盤風向 */
+  .market{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px}
+  .market .mh{font-size:13px; font-weight:700; margin-bottom:10px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px}
+  .market .mh .dt{color:var(--muted); font-weight:400; font-size:12px}
+  .mtiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px}
+  @media(max-width:640px){ .mtiles{grid-template-columns:repeat(2,1fr)} }
+  .mtile{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:9px 11px}
+  .mtile .l{font-size:11.5px; color:var(--muted)}
+  .mtile .v{font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:3px}
+  .mtile .u{font-size:11px; color:var(--muted)}
+  /* 投信雷達 */
+  .radar{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px}
+  .radar-btn{background:var(--accent); color:#fff; border:0; font-size:14px; font-weight:600; padding:10px 18px; border-radius:10px; cursor:pointer}
+  .radar-cols{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:6px}
+  @media(max-width:760px){ .radar-cols{grid-template-columns:1fr} }
+  .rcol h5{margin:0 0 6px; font-size:12.5px}
+  .rrow{display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 2px; border-top:1px solid var(--line); cursor:pointer}
+  .rrow:hover{color:var(--accent)}
+  .rrow .rk{width:16px; color:var(--muted); font-size:11px; text-align:right}
+  .rrow .rn{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .rrow .rn .c{color:var(--muted); font-size:11px; margin-right:4px}
+  .rrow .rv{font-variant-numeric:tabular-nums; font-weight:600}
+  /* 投信動向徽章 */
+  .streak{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin:2px 2px 10px}
+  .streak .big{font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1}
+  .streak .big small{font-size:15px; font-weight:600}
+  .streak .lbl{font-size:12px; color:var(--muted); margin-bottom:3px}
+  .flag{font-size:13px; padding:8px 12px; border-radius:9px; line-height:1.5}
+  .flag.hot{background:var(--up-soft,rgba(239,77,90,.14)); color:var(--up)}
+  .flag.warn{background:rgba(240,136,62,.14); color:var(--f-dealer)}
+  .flag.cool{background:var(--down-soft,rgba(38,162,105,.14)); color:var(--down)}
+  .status{padding:44px 0; text-align:center; color:var(--muted)}
+  .note{color:var(--muted); font-size:12px; line-height:1.6; margin-top:8px}
+  .disc{color:var(--muted); font-size:11.5px; line-height:1.6; margin-top:26px; border-top:1px solid var(--line); padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="home">台股 AI 類股動態</h1>
+  <p class="sub">AI 供應鏈子板塊分類 · 點選個股看股價走勢、營收成長、估值比、三大法人與經查證的 AI 分析</p>
+  <div class="searchbar">
+    <input id="code" type="text" inputmode="numeric" placeholder="或直接輸入股票代碼，例如 2330" autocomplete="off">
+    <button class="go" id="go">查詢</button>
+  </div>
+  <div id="view"></div>
+  <div class="disc">資料來源：股價／營收／估值／三大法人／即時新聞／即時研判皆為 FinMind 即時資料，每次開啟自動更新；「深度分析（AI 查證大綱）」為人工查證之快照（截至 2026-07-15）。僅供研究參考，非投資建議。</div>
+</div>
+
+<script>
+const API="https://api.finmindtrade.com/api/v4/data";
+const $=id=>document.getElementById(id);
+const view=$("view"), codeEl=$("code");
+const AS_OF="2026-07-16";
+
+/* ============ 子板塊分類 ============ */
+const SECTORS=[
+  {name:"晶圓代工 / 封測", d:"AI 晶片的製造與封裝核心", stocks:[
+    ["2330","台積電"],["2303","聯電"],["6770","力積電"],["5347","世界先進"],["3711","日月光投控"],["6239","力成"]]},
+  {name:"IC 設計", d:"AI SoC、高速傳輸與周邊晶片", stocks:[
+    ["2454","聯發科"],["2379","瑞昱"],["3034","聯詠"],["4966","譜瑞-KY"],["5269","祥碩"],["8299","群聯"]]},
+  {name:"ASIC 設計 / 矽智財", d:"CSP 自研 AI 晶片委外設計與 IP", stocks:[
+    ["3661","世芯-KY"],["3443","創意"],["3035","智原"],["3529","力旺"],["6533","晶心科"],["6643","M31"]]},
+  {name:"AI 伺服器 / ODM", d:"GB200/GB300 機櫃組裝與品牌", stocks:[
+    ["2317","鴻海"],["2382","廣達"],["3231","緯創"],["6669","緯穎"],["2376","技嘉"],["2356","英業達"],["4938","和碩"],["2357","華碩"]]},
+  {name:"散熱 (液冷)", d:"水冷板、CDU、快接頭，2026 成標配", stocks:[
+    ["3017","奇鋐"],["3324","雙鴻"],["3653","健策"],["6230","超眾"],["2421","建準"]]},
+  {name:"ABF 載板 / PCB / CCL", d:"高階算力晶片載板與高速板材", stocks:[
+    ["3037","欣興"],["3189","景碩"],["8046","南電"],["2368","金像電"],["3044","健鼎"],["2383","台光電"]]},
+  {name:"網通 / 光通訊 (CPO)", d:"800G/1.6T 交換器、光模組、矽光子", stocks:[
+    ["2345","智邦"],["4979","華星光"],["3234","光環"],["3081","聯亞"],["3163","波若威"],["4977","眾達-KY"],["6285","啟碁"]]},
+  {name:"記憶體", d:"HBM 外溢帶動的 DRAM / 利基型記憶體", stocks:[
+    ["2408","南亞科"],["2344","華邦電"],["2337","旺宏"],["3006","晶豪科"],["4967","十銓"]]},
+  {name:"AI 基建 (電源 / 機構)", d:"高功率電源、機櫃機殼與重電", stocks:[
+    ["2308","台達電"],["2301","光寶科"],["6412","群電"],["8210","勤誠"],["3013","晟銘電"]]},
+];
+
+/* ============ 經查證的新聞與 AI 分析（快照 2026-07-15）============ */
+const NEWS={
+ "2330":{items:[
+   {t:"台積電 Q2 財報大炸裂！EPS 27.25 元創新高 毛利率 67.7% 寫紀錄",s:"中時新聞網",u:"https://www.chinatimes.com/realtimenews/20260716002849-260410"},
+   {t:"台積電法說 Q2 雙率再超標、EPS 27.25 元同創高 上半年大賺近 5 個股本",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6536780"},
+   {t:"Q2 毛利率衝 67.7%！每股賺 27.25 元 2 奈米開始貢獻營收",s:"壹蘋新聞網",u:"https://news.nextapple.com/finance/20260716/DB7CF3C8F8943F0234BB29A3CEAB9066"}],
+  sum:"台積電 7/16 Q2 法說：合併營收 1.27 兆（YoY +36%）、稅後淨利年增 77.4%、EPS 27.25 元創新高，毛利率 67.7%、營益率 60.3% 雙雙超越財測高標並擊敗法人預期；2 奈米開始貢獻營收，管理層對跨年度 AI 趨勢高度樂觀，未來三年資本支出將較過去三年『顯著高出許多』。",
+  drv:["Q2 EPS 27.25 元、毛利率 67.7% 雙創新高","2 奈米放量貢獻營收、AI 與先進封裝需求強勁","未來三年資本支出顯著提高，看好跨年度 AI 大趨勢"],
+  rsk:["Q3 起 2 奈米量產與海外廠擴建稀釋毛利","高基期下成長率放緩、匯率波動影響"]},
+ "2317":{items:[
+   {t:"AI 伺服器出貨鴻海領先廣達、緯創，外資看好 2026 產業鏈獲利全面釋放",s:"科技新報",u:"https://finance.technews.tw/2026/05/12/foxconn-leads-quanta-and-wistron-in-ai-server-shipments/"},
+   {t:"AI 伺服器拉貨潮噴發 緯創、鴻海、廣達出貨激戰數據曝光",s:"經濟日報",u:"https://money.udn.com/money/story/5607/9255810"},
+   {t:"AI 伺服器繼續漲！三大法人 2 日補貨鴻海 5.9 萬張、180 億元",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/ai%E4%BC%BA%E6%9C%8D%E5%99%A8%E7%B9%BC%E7%BA%8C%E6%BC%B2-%E4%B8%89%E5%A4%A7%E6%B3%95%E4%BA%BA%E8%A3%9C%E8%B2%A8-%E9%80%992%E6%AA%94-5-5%E8%90%AC%E5%BC%B5-130000731.html"}],
+  sum:"鴻海為 GB 機櫃出貨龍頭，4 月約 3,700 櫃、市佔逾 44%、2025 全年約 14,700 櫃，2026 AI 出貨上看翻倍；7/16 盤面三大法人近 2 日買超鴻海約 5.9 萬張（180 億元），法人目標價上看 280 元。",
+  drv:["GB200/GB300 機櫃出貨市佔第一","2026 AI 伺服器出貨上看翻倍","毛利率為 ODM 四雄之首"],
+  rsk:["AI 機櫃毛利偏低、規模換獲利","Blackwell 晶片供給與庫存節奏影響拉貨"]},
+ "2382":{items:[
+   {t:"外資喊老 AI 補漲 30%！廣達、緯創、鴻海、緯穎 ODM 四雄選誰",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260413900003-420101"},
+   {t:"AI 伺服器出貨鴻海領先廣達、緯創",s:"科技新報",u:"https://finance.technews.tw/2026/05/12/foxconn-leads-quanta-and-wistron-in-ai-server-shipments/"}],
+  sum:"廣達為 GB 機櫃出貨第二大（4 月約 2,100 櫃、2025 全年約 6,100 櫃），受惠雲端大廠 AI 機櫃需求延續，2026 出貨動能可期。",
+  drv:["GB 機櫃出貨量業界第二","北美 CSP 客戶訂單能見度高","L10/L11 系統整合比重提升"],
+  rsk:["競爭者眾、代工利潤壓縮","客戶集中度風險"]},
+ "3231":{items:[
+   {t:"老 AI 伺服器補漲 鴻海領頭、緯創外資加持",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%80%81AI%E4%BC%BA%E6%9C%8D%E5%99%A8%E6%97%8F%E7%BE%A4%E4%BB%8A%E6%97%A5%E5%9B%9E%E7%A5%9E-%E8%A3%9C%E6%BC%B2%E8%A1%8C%E6%83%85%E8%83%BD%E5%90%A6%E6%8E%A5%E6%A3%92-%E9%B4%BB%E6%B5%B7%E9%A0%98%E9%A0%AD-%E7%B7%AF%E5%89%B5%E5%A4%96%E8%B3%87%E5%8A%A0%E6%8C%81-%E7%B1%8C%E7%A2%BC%E8%88%87%E7%87%9F%E6%94%B6%E5%90%8C%E6%AD%A5%E9%A9%97%E8%AD%89-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-69fae4ff028e5400c7fde23a"}],
+  sum:"緯創 2025 全年 GB 機櫃約 5,700 櫃、含子公司緯穎集團約 6,300 櫃，首季 AI 伺服器出貨優於預期；7/16 外資本週買超緯創約 6.9 萬張（約 99 億元），籌碼與營收同步走揚，屬 ODM 四雄補漲主角。",
+  drv:["GB 機櫃出貨集團規模居前","持股緯穎，直接受惠白牌伺服器","外資買盤與月營收同步走揚"],
+  rsk:["毛利率相對偏低","AI 拉貨若遞延影響季節性"]},
+ "6669":{items:[
+   {t:"大摩調升緯穎目標價 看好一般型伺服器與 Trainium3 合作",s:"科技新報",u:"https://finance.technews.tw/2026/05/12/foxconn-leads-quanta-and-wistron-in-ai-server-shipments/"}],
+  sum:"緯穎為白牌（ODM Direct）伺服器要角，大摩看好其一般型伺服器需求優於預期，2026 可望成為 Amazon Trainium3 更全面的策略夥伴，並取得 T3 的 UBB 訂單。",
+  drv:["取得 Amazon Trainium3 UBB 訂單","白牌伺服器直供北美 CSP","一般型伺服器需求優於預期"],
+  rsk:["客戶高度集中於少數 CSP","自研 ASIC 專案時程變動風險"]},
+ "2454":{items:[
+   {t:"聯發科 AI ASIC 爆發，拿下與 Google TPU 關鍵合作",s:"口袋證券",u:"https://www.pocket.tw/school/report/SCHOOL/7422/"},
+   {t:"聯發科 AI ASIC 展望更趨樂觀 法人大幅調升目標價近七成",s:"經濟日報",u:"https://money.udn.com/money/story/5710/9476088"},
+   {t:"聯發科 AI ASIC 大爆發 外資喊上 5000 元目標價",s:"財報狗",u:"https://statementdog.com/news/16357"}],
+  sum:"聯發科 AI ASIC 營收目標由 10 億美元翻倍上調至 20 億美元、貢獻占比首度突破 10%；與 Google TPU、NVIDIA 合作為長線動能。7 月法說再上修 AI ASIC 展望，股價漲停創掛牌新高（2,090 元），麥格理目標價上調至 1 萬元。",
+  drv:["AI ASIC 2026 目標翻倍至 20 億美元","與 Google TPU 合作、CoWoS 供給無虞至 2028","旗艦天璣 9500 量產帶動手機業務"],
+  rsk:["手機記憶體成本上升壓縮毛利","ASIC 營收貢獻集中於少數大客戶"]},
+ "3017":{items:[
+   {t:"AI 散熱王者奇鋐不怕股災 訂單直達 2029 年、產能滿載",s:"工商時報",u:"https://www.ctee.com.tw/news/20260607700534-430201"},
+   {t:"2026 液冷滲透率直衝 76%！散熱獲利主升段",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6423986"}],
+  sum:"奇鋐在 GB200/GB300 水冷板市佔約 40–50%，訂單能見度到 2029 年；Vera Rubin 平台邁向全液冷，單櫃液冷價值上看 6.3–6.5 萬美元（較 GB300 約 +50%）為長線大利多。惟 7 月因 NVIDIA 下一代 Rubin 均熱片『設計變更』傳言，散熱三雄（奇鋐、雙鴻、健策）短線自高點回落逾兩成，波動加大。",
+  drv:["GB 水冷板市佔 40–50%、訂單到 2029 年","Vera Rubin 全液冷、單櫃價值 +50%","2026 液冷滲透率上看 76%"],
+  rsk:["Rubin 均熱片設計變更傳言、短線急跌逾兩成","客戶集中 NVIDIA、規格變動高度敏感"]},
+ "3324":{items:[
+   {t:"液冷散熱 2026 成標配？奇鋐、雙鴻為何是最大受惠者",s:"CMoney",u:"https://aigc.cmoney.tw/answer/%E6%B6%B2%E5%86%B7%E6%95%A3%E7%86%B120-11938533"},
+   {t:"2026 液冷滲透率直衝 76%！奇鋐、雙鴻、晟銘電、台達電",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6423986"}],
+  sum:"雙鴻已切入 Meta、AWS、Microsoft 供應鏈，提供水冷板、CDU、快接頭整體方案，並取得 NVIDIA GB300 液冷認證，為液冷標配化的核心受惠股。",
+  drv:["打入 Meta/AWS/Microsoft 液冷供應鏈","取得 GB300 液冷認證","水冷板+CDU+快接頭一站式方案"],
+  rsk:["產能擴充資本支出大","與同業（奇鋐）競爭激烈"]},
+ "3037":{items:[
+   {t:"ABF 載板供給續吃緊！欣興、景碩、南電迎成長契機",s:"經濟日報",u:"https://money.udn.com/money/story/11162/9587080"},
+   {t:"載板三雄齊創天價 外資目標價最高上看 1,575 元",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%BC%89%E6%9D%BF%E4%B8%89%E9%9B%84-%E6%99%AF%E7%A2%A9-%E5%8D%97%E9%9B%BB-%E6%AC%A3%E8%88%88%E9%BD%8A%E5%89%B5%E5%A4%A9%E5%83%B9-%E5%A4%96%E8%B3%87%E7%9B%AE%E6%A8%99%E5%83%B9%E6%9C%80%E9%AB%98%E4%B8%8A%E7%9C%8B1-575%E5%85%83-Agentic-AI%E9%9C%80%E6%B1%82%E8%94%93%E5%BB%B6%E8%87%B3CPU-ABF%E4%BE%9B%E9%9C%80%E7%BC%BA%E5%8F%A32028%E5%B9%B4%E6%81%90%E9%81%9435--%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a3de5712ab9a0d1347e1d09"}],
+  sum:"Agentic AI 帶動需求由 GPU/ASIC 延伸至 CPU，ABF 載板供不應求。欣興為全球 ABF 載板龍頭、高階技術僅次於 Ibiden，EPS 由 2024 年約 11 元成長至 2026 年約 17 元；7/16 元大投顧目標價 965 元、富邦上看 1,000 元。",
+  drv:["高階 ABF 產能吃緊、報價連漲","技術地位僅次於 Ibiden","Ibiden 估 2028 ABF 需求較 2026 增 115%"],
+  rsk:["玻璃基板長線替代疑慮（2030 前難取代）","高階產能擴充與良率風險"]},
+ "3189":{items:[
+   {t:"載板三雄齊創天價 景碩為輝達 Vera CPU 主要受惠者",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%BC%89%E6%9D%BF%E4%B8%89%E9%9B%84-%E6%99%AF%E7%A2%A9-%E5%8D%97%E9%9B%BB-%E6%AC%A3%E8%88%88%E9%BD%8A%E5%89%B5%E5%A4%A9%E5%83%B9-%E5%A4%96%E8%B3%87%E7%9B%AE%E6%A8%99%E5%83%B9%E6%9C%80%E9%AB%98%E4%B8%8A%E7%9C%8B1-575%E5%85%83-Agentic-AI%E9%9C%80%E6%B1%82%E8%94%93%E5%BB%B6%E8%87%B3CPU-ABF%E4%BE%9B%E9%9C%80%E7%BC%BA%E5%8F%A32028%E5%B9%B4%E6%81%90%E9%81%9435--%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a3de5712ab9a0d1347e1d09"},
+   {t:"ABF 載板供給續吃緊 欣興、景碩、南電迎成長契機",s:"經濟日報",u:"https://money.udn.com/money/story/11162/9587080"}],
+  sum:"景碩身為輝達 Vera CPU 主要受惠者，CPU 供貨率預估由 10% 攀升至 50%，帶動 ABF 稼動率由 86% 升至 95%；法人估 2027/28 EPS 17.43/39.23 元、目標價 1,020 元。",
+  drv:["輝達 Vera CPU 主要載板供應商","CPU 供貨率 10%→50%","稼動率拉升帶動獲利彈性"],
+  rsk:["產品組合較欣興偏中高階外的比重","ABF 景氣循環波動"]},
+ "8046":{items:[
+   {t:"ABF 載板供給續吃緊 欣興、景碩、南電迎成長契機",s:"經濟日報",u:"https://money.udn.com/money/story/11162/9587080"},
+   {t:"南電、欣興、景碩全漲停 上萬張排隊搶買",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202606250022/"}],
+  sum:"南電以中階 ABF 產品為主力，受惠載板漲價，稼動率預估由 75–80% 提升至 90% 以上，帶動獲利快速回升。",
+  drv:["ABF 漲價直接挹注獲利","稼動率明顯回升","載板供不應求、賣方市場成形"],
+  rsk:["中階產品競爭較高階激烈","獲利對報價敏感度高"]},
+ "3661":{items:[
+   {t:"世芯-KY 首季 EPS 17.55 元、毛利率創新高 下半年爆發",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E4%B8%96%E8%8A%AF-KY%E6%B3%95%E8%AA%AA%E6%9C%83-%E9%A6%96%E5%AD%A3EPS-17-55%E5%85%83-%E6%AF%9B%E5%88%A9%E7%8E%87%E5%89%B5%E6%AD%B7%E5%8F%B2%E6%96%B0%E9%AB%98-N3-AI%E5%8A%A0%E9%80%9F%E5%99%A8%E7%AC%AC%E4%B8%89%E5%AD%A3%E7%88%86%E9%87%8F-%E4%B8%8B%E5%8D%8A%E5%B9%B4%E7%87%9F%E6%94%B6%E8%BF%8E%E7%88%86%E7%99%BC%E6%88%90%E9%95%B7%E6%9C%9F-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-69fdaa684d59ab006c422047"},
+   {t:"世芯 2026 年下半年營運爆發",s:"經濟日報",u:"https://money.udn.com/money/story/5710/9527238"}],
+  sum:"世芯-KY 1Q26 毛利率突破 50%（50.16% 創單季新高）、EPS 17.55 元；北美最大客戶（亞馬遜）N3 AI 加速器 6 月放量，Q3、Q4 營收獲利爆發性成長，ADAS 車用成為新支柱。",
+  drv:["北美 CSP N3 AI 加速器 6 月放量","毛利率創歷史新高","車用 ADAS 貢獻遞增"],
+  rsk:["專案 Tape-out 遞延使營收波動大","營收高度集中單一大客戶"]},
+ "3443":{items:[
+   {t:"創意在手 3 個大型 AI ASIC 專案 2026 加速量產",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260416900449-420101"},
+   {t:"創意、世芯-KY 及聯發科產業趨勢、營運展望與風險",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6342842"}],
+  sum:"創意為台灣領先 ASIC 設計服務廠，在手 3 個大型 AI ASIC 專案 2026 加速量產，並新奪 2 大美系 CSP 下一代 CPU 專案，受惠雲端業者自研晶片趨勢。",
+  drv:["3 大 AI ASIC 專案 2026 放量","新增 2 大美系 CSP CPU 專案","CSP 自研晶片趨勢明確"],
+  rsk:["專案量產時程與良率變數","與世芯等同業競爭"]},
+ "2345":{items:[
+   {t:"智邦 AI 加速卡與交換器展望能見度直達後年 攻上 2800 元新高",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6522309"},
+   {t:"智邦目標價喊到 3,000 元",s:"經濟日報",u:"https://money.udn.com/money/story/5607/9481322"},
+   {t:"800G、1.6T 升級潮來了！外資點讚目標價喊 3600 元",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/800g-1-6t%E5%8D%87%E7%B4%9A%E6%BD%AE%E4%BE%86%E4%BA%86-%E7%B6%B2%E9%80%9A%E5%BB%A0-%E5%A4%96%E8%B3%87%E9%BB%9E%E8%AE%9A%E7%9B%AE%E6%A8%99%E5%83%B9%E5%96%8A%E5%87%BA3600%E5%85%83-101500562.html"}],
+  sum:"智邦為全球前列資料中心白牌交換器廠，Q1 營收 701 億（YoY +64%）、5 月 286 億創高。GB300 放量帶動 800G 光模組出貨倍增，並於 OFC 展出 CPO/OCS 方案，外資目標價 3,150–3,600 元。",
+  drv:["800G/1.6T 交換器升級潮","GB300 放量、月營收連創新高","CPO/OCS 矽光子布局領先"],
+  rsk:["財報波動大、股價高基期","光模組供應鏈競爭"]},
+
+ "2303":{items:[
+   {t:"台積電產能塞爆，老二老三爽接單！聯電創新高後世界先進、力積電誰跟上",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6509331"},
+   {t:"聯電股價快漲停！成熟製程迎轉機 外資按讚、目標價曝光",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202606240065/"}],
+  sum:"成熟製程漲價循環啟動，一線廠釋單轉單受惠；聯電最快 2026 下半年部分產品調漲 5–10%、2027 擴大漲價範圍，28 奈米稼動率 2027 有望突破 90%。",
+  drv:["成熟製程漲價循環啟動","承接一線廠釋出產能與轉單","28 奈米稼動率回升"],
+  rsk:["8 吋需求分化、報價回檔風險","中國同業成熟製程擴產競爭"]},
+ "6770":{items:[
+   {t:"台積電產能塞爆，老二老三爽接單",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6509331"},
+   {t:"成熟製程漲到 2027！晶圓代工三雄為何兩樣情",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260702900001-420101"}],
+  sum:"成熟製程與記憶體代工回溫，法人估力積電獲利大幅躍升，若給 15 倍本益比目標價上看 90 元；DRAM 缺貨外溢帶動記憶體代工動能。",
+  drv:["成熟製程/記憶體代工漲價","獲利谷底回升","DRAM 缺貨外溢代工需求"],
+  rsk:["折舊負擔重、獲利波動大","8 吋消費性需求疲弱風險"]},
+ "5347":{items:[
+   {t:"成熟製程漲到 2027！晶圓代工三雄為何兩樣情 僅他能站 2 字頭",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260702900001-420101"},
+   {t:"台積電產能塞爆，老二老三爽接單",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6509331"}],
+  sum:"受惠台積電、三星釋出成熟製程產能缺口，並卡位 AI 電源管理晶片；國內法人上修 2026/27 EPS 至 5.42/6.8 元，為此波成熟製程最大受惠者。",
+  drv:["承接一線廠釋單、成熟製程最大受惠","AI 電源管理 IC 需求","與恩智浦合資新加坡 12 吋廠"],
+  rsk:["消費性需求復甦力道","新廠折舊初期壓力"]},
+ "3711":{items:[
+   {t:"AI 先進封裝需求大爆發！日月光封測毛利率衝 26%",s:"聯合新聞網",u:"https://udn.com/news/story/7251/9523452"},
+   {t:"日月光投控強攻 AI 先進封裝 2026 資本支出豪擲 70 億美元創紀錄",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E6%97%A5%E6%9C%88%E5%85%89%E6%8A%95%E6%8E%A7-3711-%E5%BC%B7%E6%94%BBAI%E5%85%88%E9%80%B2%E5%B0%81%E8%A3%9D-2026%E5%B9%B4%E8%B3%87%E6%9C%AC%E6%94%AF%E5%87%BA%E8%B1%AA%E6%93%B270%E5%84%84%E7%BE%8E%E5%85%83%E5%89%B5%E7%B4%80%E9%8C%84-%E7%9B%B8%E9%97%9C%E4%BE%9B%E6%87%89%E9%8F%88%E9%80%A3%E5%8B%95%E6%95%88%E6%87%89--%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-699d1ca45ad7374b74404198"}],
+  sum:"全球封測龍頭，LEAP 先進封測全年營收目標上修至 35 億美元以上（年增 118%），2026 資本支出上修至 85 億美元創紀錄，推進 CoWoS 全製程、CPO 與 FOPLP；Q1 EPS 3.24 元（年增 85%）。",
+  drv:["先進封裝（CoWoS/FOPLP/CPO）需求爆發","LEAP 營收年增逾一倍","承接台積電 oS 委外"],
+  rsk:["資本支出龐大、折舊上升","傳統封測與打線業務景氣"]},
+ "6239":{items:[
+   {t:"AI 晶片競賽推升先進封裝需求 日月光、力成、京元電資本支出衝 3700 億",s:"財報狗",u:"https://statementdog.com/news/16363"}],
+  sum:"記憶體與邏輯封測廠，2026 資本支出上修至 500 億元，投入 FOPLP 擴廠、雙層無塵室與高階測試設備，卡位 AI 與記憶體封測需求。",
+  drv:["資本支出創高、擴 FOPLP 與高階測試","AI 帶動記憶體封測需求","先進封裝產業鏈連動"],
+  rsk:["記憶體景氣循環","擴產初期折舊壓力"]},
+ "2379":{items:[
+   {t:"瑞昱深度報告：AI 浪潮下的網通升級領航者",s:"CMoney",u:"https://www.cmoney.tw/forum/article/178794272"},
+   {t:"聯發科領軍 AI ASIC 族群集體爆發 IC 設計股全解析",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%81%AF%E7%99%BC%E7%A7%91%E9%A0%98%E8%BB%8D-AI-ASIC%E6%97%8F%E7%BE%A4%E9%9B%86%E9%AB%94%E7%88%86%E7%99%BC-%E5%BE%9E%E5%8D%83%E9%87%91%E8%82%A1%E5%88%B0%E4%BD%8E%E5%9F%BA%E6%9C%9FIC%E8%A8%AD%E8%A8%88%E8%82%A1-4%E6%9C%88%E7%87%9F%E6%94%B6%E8%88%87Q1%E8%B2%A1%E5%A0%B1%E5%85%A8%E8%A7%A3%E6%9E%90-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a01846d6dd069005fcc5e26"}],
+  sum:"網通與周邊晶片廠，4 月營收年增 11.28%，市場估全年 EPS 挑戰 31.7–32.1 元、目標價 580–587 元；產品延伸至車用 Wi-Fi/藍牙/座艙 SoC，受惠 AI 資料中心乙太網路升級。",
+  drv:["AI 資料中心網通/乙太網路升級","車用產品線放量","營收回溫"],
+  rsk:["消費性網通庫存調整","競爭與價格壓力"]},
+ "3034":{items:[
+   {t:"聯發科領軍 AI ASIC 族群集體爆發 IC 設計股全解析",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%81%AF%E7%99%BC%E7%A7%91%E9%A0%98%E8%BB%8D-AI-ASIC%E6%97%8F%E7%BE%A4%E9%9B%86%E9%AB%94%E7%88%86%E7%99%BC-%E5%BE%9E%E5%8D%83%E9%87%91%E8%82%A1%E5%88%B0%E4%BD%8E%E5%9F%BA%E6%9C%9FIC%E8%A8%AD%E8%A8%88%E8%82%A1-4%E6%9C%88%E7%87%9F%E6%94%B6%E8%88%87Q1%E8%B2%A1%E5%A0%B1%E5%85%A8%E8%A7%A3%E6%9E%90-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a01846d6dd069005fcc5e26"}],
+  sum:"驅動 IC（DDI）與 TDDI 大廠，居全球驅動 IC 前列；AI ASIC 題材下 IC 設計族群資金蔓延，主業面板驅動 IC 隨終端需求波動。",
+  drv:["OLED/高階顯示驅動 IC 升級","TDDI 與大尺寸應用","高殖利率、獲利穩健"],
+  rsk:["面板/消費終端需求疲弱","驅動 IC 價格競爭"]},
+ "4966":{items:[
+   {t:"聯發科領軍 AI ASIC 族群集體爆發 IC 設計股全解析",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%81%AF%E7%99%BC%E7%A7%91%E9%A0%98%E8%BB%8D-AI-ASIC%E6%97%8F%E7%BE%A4%E9%9B%86%E9%AB%94%E7%88%86%E7%99%BC-%E5%BE%9E%E5%8D%83%E9%87%91%E8%82%A1%E5%88%B0%E4%BD%8E%E5%9F%BA%E6%9C%9FIC%E8%A8%AD%E8%A8%88%E8%82%A1-4%E6%9C%88%E7%87%9F%E6%94%B6%E8%88%87Q1%E8%B2%A1%E5%A0%B1%E5%85%A8%E8%A7%A3%E6%9E%90-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a01846d6dd069005fcc5e26"}],
+  sum:"高速傳輸介面 IC 廠，PCIe Gen5 Retimer 已於 2025 大量量產並打入 Tier-1 雲端供應鏈，資料中心營收占比 2026 上看 15–20%，由筆電轉向 AI PC/資料中心高速傳輸。",
+  drv:["PCIe Gen5 Retimer 進雲端供應鏈","資料中心營收占比提升","AI PC 高速介面升級"],
+  rsk:["筆電/消費需求過渡期","客戶認證與導入時程"]},
+ "5269":{items:[
+   {t:"聯發科領軍 AI ASIC 族群集體爆發 IC 設計股全解析",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E8%81%AF%E7%99%BC%E7%A7%91%E9%A0%98%E8%BB%8D-AI-ASIC%E6%97%8F%E7%BE%A4%E9%9B%86%E9%AB%94%E7%88%86%E7%99%BC-%E5%BE%9E%E5%8D%83%E9%87%91%E8%82%A1%E5%88%B0%E4%BD%8E%E5%9F%BA%E6%9C%9FIC%E8%A8%AD%E8%A8%88%E8%82%A1-4%E6%9C%88%E7%87%9F%E6%94%B6%E8%88%87Q1%E8%B2%A1%E5%A0%B1%E5%85%A8%E8%A7%A3%E6%9E%90-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-6a01846d6dd069005fcc5e26"}],
+  sum:"高速傳輸 IC 與 AMD 策略夥伴，受惠 AMD 平台市佔提升與 USB4 放量，法人估 2026 全年 EPS 挑戰 75–80 元。",
+  drv:["AMD 平台市佔提升","USB4 開始放量","高速傳輸控制 IC 領先"],
+  rsk:["單一大客戶（AMD）集中度高","PC 需求循環"]},
+ "8299":{items:[
+   {t:"群聯法說 Q1 EPS 68.8 元 成功轉型 AI 生態系供應商",s:"方格子 vocus",u:"https://vocus.cc/article/6a03523ffd897800012addca"},
+   {t:"群聯法人看好 2026 獲利創高 受惠 AI 推論與 NAND 漲價",s:"CMoney",u:"https://cmnews.com.tw/article/newsyoudeservetoknow-4e65113d-48de-11f1-8641-7aa6915aa73b"}],
+  sum:"NAND 控制 IC 龍頭，Q1 EPS 68.8 元（年增 1144%），受惠 AI 推論、eSSD 出貨與 NAND 漲價，轉型 AI 儲存與運算架構供應商，法人估 2026 營收挑戰千億、EPS 上看 80 元。",
+  drv:["NAND 漲價 + eSSD 放量","轉型 AI 儲存生態系","企業級 SSD 切入"],
+  rsk:["NAND 價格循環波動","記憶體景氣反轉風險"]},
+ "3035":{items:[
+   {t:"IP/ASIC 族群走高 AI 客製化晶片需求強勁 世芯、智原引領",s:"CMoney",u:"https://cmnews.com.tw/article/cmoneyairesearcher-bccd9576-6eae-11f1-864c-73690a6516f9"},
+   {t:"智原法說會解析",s:"CMoney",u:"https://www.cmoney.tw/forum/article/178597858"}],
+  sum:"ASIC/SoC 設計服務廠（聯電集團），一條龍整合 IP、NRE、量產與封裝，直接受惠 CSP 自研 AI 晶片與客製化 ASIC 開案放量。",
+  drv:["CSP 自研 ASIC 開案","Turnkey 一條龍設計服務","先進製程 NRE 收入"],
+  rsk:["專案量產時程遞延","與世芯/創意競爭"]},
+ "3529":{items:[
+   {t:"IP 矽智財大比拚：智原、M31、力旺",s:"Wearn 聚財網",u:"https://www.wearn.com/bbs/t1082732.html"},
+   {t:"IP/ASIC 族群走高 AI 客製化晶片需求強勁",s:"CMoney",u:"https://cmnews.com.tw/article/cmoneyairesearcher-bccd9576-6eae-11f1-864c-73690a6516f9"}],
+  sum:"記憶體 IP（eNVM）與安全 IP 授權龍頭，切入先進製程與多元應用，AI 客製化晶片帶動 IP 授權與權利金需求。",
+  drv:["eNVM/安全 IP 授權","先進製程導入","AI ASIC 權利金貢獻"],
+  rsk:["權利金認列時點波動","高本益比評價"]},
+ "6533":{items:[
+   {t:"IP/ASIC 族群走高 AI 客製化晶片需求強勁",s:"CMoney",u:"https://cmnews.com.tw/article/cmoneyairesearcher-bccd9576-6eae-11f1-864c-73690a6516f9"}],
+  sum:"RISC-V CPU IP 廠，若 CSP AI ASIC 導入 RISC-V 架構，權利金彈性可望提升；受惠 AI 客製化晶片趨勢。",
+  drv:["RISC-V 架構滲透","AI ASIC 授權機會","車用/邊緣運算應用"],
+  rsk:["營收規模小、獲利波動","架構導入不確定性"]},
+ "6643":{items:[
+   {t:"IP 矽智財大比拚：智原、M31、力旺",s:"Wearn 聚財網",u:"https://www.wearn.com/bbs/t1082732.html"}],
+  sum:"高速介面基礎 IP 授權廠（PCIe/USB/UFS/MIPI/SerDes），對應 AI/HPC 資料吞吐量與晶片間互連升級需求。",
+  drv:["高速介面 IP（SerDes 等）需求","先進製程 IP 布局","AI/HPC 互連升級"],
+  rsk:["授權金認列波動","小型 IP 市場競爭"]},
+ "2376":{items:[
+   {t:"技嘉法說：26Q1 EPS 創 7.86 元新高 AI 伺服器營收翻倍",s:"方格子 vocus",u:"https://vocus.cc/article/6a2e8017fd89780001693f3e"},
+   {t:"AI 伺服器需求爆發 技嘉 Q1 獲利創高 法人看好 EPS 挑戰 30 元",s:"財報狗",u:"https://statementdog.com/news/16491"}],
+  sum:"Q1 營收 1,050 億、EPS 7.86 元雙創新高，毛利率跳升至 12.01%，AI 伺服器業務高速成長，法人估全年 EPS 挑戰 30 元。",
+  drv:["AI 伺服器營收翻倍","毛利率明顯改善","品牌 + ODM 雙軌"],
+  rsk:["記憶體排擠 PC/主機板","ODM 代工利潤壓縮"]},
+ "2356":{items:[
+   {t:"AI 伺服器/PC 供應鏈台灣 10 雄 美系外資看好這幾檔",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260407900302-420101"}],
+  sum:"五大 ODM 5 月營收年增 45%，AI 伺服器出貨動能強；惟筆電受記憶體成本排擠，下半年需觀察。",
+  drv:["AI 伺服器出貨成長","L6/L10 系統組裝","伺服器營收占比提升"],
+  rsk:["筆電受記憶體成本排擠","代工毛利偏低"]},
+ "4938":{items:[
+   {t:"AI 伺服器/PC 供應鏈台灣 10 雄 美系外資看好這幾檔",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260407900302-420101"}],
+  sum:"五大 ODM 之一，AI 伺服器業務成長帶動 5 月族群營收年增 45%，惟筆電/消費電子受終端與記憶體成本影響。",
+  drv:["AI 伺服器業務放量","多元代工基礎","北美客戶訂單"],
+  rsk:["消費電子需求疲弱","毛利率壓力"]},
+ "2357":{items:[
+   {t:"華碩、技嘉 AI 伺服器出貨續強",s:"工商時報",u:"https://www.chinatimes.com/newspapers/20260521000397-260206"},
+   {t:"老 AI 迎新行情！法人點名廣達、華碩、華擎、微星 6 檔潛力股",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260612900294-420101"}],
+  sum:"法人看好華碩 AI 伺服器技術領先，預期 2026/27 伺服器營收年增 119%/18%，Q1 獲利優於預期，上修伺服器營收年增逾 100%。",
+  drv:["AI 伺服器營收倍增","品牌 PC + 伺服器雙引擎","高階伺服器能見度提高"],
+  rsk:["PC 需求與記憶體成本","庫存管理風險"]},
+ "3653":{items:[
+   {t:"均熱片王者健策搶佔 AI 水冷商機 2026 爆發成長全解析",s:"口袋證券",u:"https://www.pocket.tw/school/report/SCHOOL/6817/"},
+   {t:"新世代散熱革命！ASIC 量產同步起飛 全年 EPS 上看 53.96 元",s:"FTNN 新聞網",u:"https://www.ftnn.com.tw/news/551093"}],
+  sum:"均熱片龍頭，切入微通道液冷與封裝蓋板，水冷板已出貨 GPU 供應鏈；法人估 2026 營收 274 億、EPS 上看 52–54 元，Q3 ASIC 單月出貨有望超越 GPU。",
+  drv:["均熱片 + 水冷板雙引擎","ASIC 散熱出貨爆發","大園廠擴產約 30%"],
+  rsk:["擴產資本支出大","客戶集中 AI 供應鏈"]},
+ "6230":{items:[
+   {t:"全球 AI 大佈建引爆散熱革命 散熱三雄奇鋐、雙鴻、建準怎麼看",s:"MY-Learning 理財通",u:"https://www.my-finance.com.tw/tw/News_detail/2234/%E5%85%A8%E7%90%83AI%E5%A4%A7%E4%BD%88%E5%BB%BA%E5%BC%95%E7%88%86%E6%95%A3%E7%86%B1%E9%9D%A9%E5%91%BD%E6%95%A3%E7%86%B1%E4%B8%89%E9%9B%84%E5%A5%87%E9%8B%90%E9%9B%99%E9%B4%BB%E5%BB%BA%E6%BA%96%E6%80%8E%E9%BA%BC%E7%9C%8B"}],
+  sum:"散熱模組廠（熱管、均熱片、VC、風扇），隸屬日本電產（Nidec）集團，隨 AI 伺服器散熱規格升級、液冷 2026 滲透率上看 76% 而受惠。",
+  drv:["AI 伺服器散熱規格升級","VC/熱管需求提升","母集團 Nidec 資源"],
+  rsk:["傳統 NB 散熱比重仍高","液冷轉型競爭"]},
+ "2421":{items:[
+   {t:"全球 AI 大佈建引爆散熱革命 散熱三雄奇鋐、雙鴻、建準怎麼看",s:"MY-Learning 理財通",u:"https://www.my-finance.com.tw/tw/News_detail/2234/%E5%85%A8%E7%90%83AI%E5%A4%A7%E4%BD%88%E5%BB%BA%E5%BC%95%E7%88%86%E6%95%A3%E7%86%B1%E9%9D%A9%E5%91%BD%E6%95%A3%E7%86%B1%E4%B8%89%E9%9B%84%E5%A5%87%E9%8B%90%E9%9B%99%E9%B4%BB%E5%BB%BA%E6%BA%96%E6%80%8E%E9%BA%BC%E7%9C%8B"}],
+  sum:"直流散熱風扇龍頭，AI 伺服器與資料中心散熱風扇需求提升；即便液冷 2026 成標配，風扇仍為系統散熱要角。",
+  drv:["AI 伺服器/資料中心散熱風扇","節能直流馬達技術","散熱系統要角"],
+  rsk:["家電/傳統風扇比重高","液冷對氣冷部分排擠"]},
+ "2368":{items:[
+   {t:"PCB 廠金像電 Q1 獲利創新高 EPS 6.87 元超車健鼎",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6455567"},
+   {t:"外資大舉加碼金像電 PCB 族群乘 AI 浪潮再攀高峰",s:"永豐豐雲學堂",u:"https://www.sinotrade.com.tw/richclub/hotstock/%E5%A4%96%E8%B3%87%E5%A4%A7%E8%88%89%E5%8A%A0%E7%A2%BC%E9%87%91%E5%83%8F%E9%9B%BB-PCB%E6%97%8F%E7%BE%A4%E4%B9%98AI%E6%B5%AA%E6%BD%AE%E5%86%8D%E6%94%80%E9%AB%98%E5%B3%B0-%E8%82%A1%E5%B8%82%E8%A9%B1%E9%A1%8C-69143096e720d511f15bea3b"}],
+  sum:"AI 伺服器高階（高層數）PCB 主力，Q1 營收獲利雙創新高、EPS 6.87 元首度超車健鼎，外資大舉加碼，法人目標價上看 1,800 元。",
+  drv:["AI 伺服器高層數 PCB","外資加碼、籌碼集中","獲利創高"],
+  rsk:["銅價/材料成本上升","高基期股價修正"]},
+ "3044":{items:[
+   {t:"金像電、華通、健鼎目標價曝光！PCB 女王喊買這 6 檔",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202606210006/"}],
+  sum:"AI 伺服器 PCB 核心供應商，營收有望突破 700 億元，受惠 AI 伺服器與車用需求，高階 PCB 回溫，法人目標價 665 元。",
+  drv:["AI 伺服器 + 車用 PCB","營收突破 700 億","高階製程回溫"],
+  rsk:["消費性 PCB 需求","匯率與材料成本"]},
+ "2383":{items:[
+   {t:"CCL PCB 下半年漲定了！台光電、金像電、健鼎…法人一口氣評 8 檔",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260703900001-420101"},
+   {t:"AI PCB 設計升級！台光電、台燿、金像電外資目標價一次看",s:"科技新報",u:"https://finance.technews.tw/2026/04/20/ai-pcb-design/"}],
+  sum:"全球 AI CCL（銅箔基板）市占約六成，2026 CCL 新增供給有限、價格看漲，為 AI 伺服器材料最受惠者，法人目標價喊至 6,600 元。",
+  drv:["AI CCL 市占逾六成","CCL 漲價循環","高速高頻材料規格升級"],
+  rsk:["上游銅箔/玻纖布成本","高評價回檔風險"]},
+ "4979":{items:[
+   {t:"矽光子族群續創新高！聯亞、華星光、眾達-KY 齊揚",s:"財報狗",u:"https://statementdog.com/news/16235"},
+   {t:"矽光子 7 劍客漲多誰能抱？法人最推這 2 檔 目標價 EPS 一次看",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260411900006-420101"}],
+  sum:"光收發模組廠，法人預期第 4 季月產能提升至 3–4 百萬顆、2027 上看 6 百萬顆以上，隨 800G/1.6T 與矽光子放量成長。",
+  drv:["800G/1.6T 光模組放量","產能持續擴充","矽光子題材"],
+  rsk:["CPO 出貨遞延/良率風險","族群漲多修正"]},
+ "3234":{items:[
+   {t:"矽光子族群續創新高！聯亞、華星光、眾達-KY 齊揚",s:"財報狗",u:"https://statementdog.com/news/16235"}],
+  sum:"光元件廠（VCSEL/LD/PD/APD/AOC），已布局 CPO 與矽光子代工，對接 800G/1.6T 高速光模組升級。",
+  drv:["高速光元件升級","CPO/矽光子代工布局","AOC 需求"],
+  rsk:["CPO 商轉時程","客戶與良率不確定"]},
+ "3081":{items:[
+   {t:"矽光子 7 劍客漲多誰能抱？法人最推這 2 檔",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260411900006-420101"},
+   {t:"矽光子又紅了！聯亞、華星光連袂漲停領族群上攻",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6316113"}],
+  sum:"矽光子/雷射晶粒廠，法人估 2026 營收年增 141% 至 53 億、EPS 19.57 元、稅後純益年增 320%，為 CPO 最受惠者之一。",
+  drv:["雷射光源/矽光子放量","2026 營收年增逾一倍","CPO 核心受惠"],
+  rsk:["CPO 出貨量下調風險","漲多、高評價波動"]},
+ "3163":{items:[
+   {t:"波若威已列入輝達 CPO 交換器供應名單 1.6T 套件 2026 量產",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/%E8%81%AF%E4%BA%9E-%E6%B3%A2%E8%8B%A5%E5%A8%81-%E4%B8%8A%E8%A9%AE-%E8%8F%AF%E6%98%9F%E5%85%89-%E7%9F%BD%E5%85%89%E5%AD%907%E5%8A%8D%E5%AE%A2%E6%BC%B2%E5%A4%9A%E8%AA%B0%E8%83%BD%E6%8A%B1-004330852.html"}],
+  sum:"光被動元件/模組廠，已列入輝達 CPO 交換器供應名單，1.6T 套件預計 2026 量產，隨 800G 滲透率提升獲利緩步墊高。",
+  drv:["進輝達 CPO 交換器供應鏈","1.6T 套件 2026 量產","800G 滲透率提升"],
+  rsk:["客戶集中度高","CPO 時程遞延"]},
+ "4977":{items:[
+   {t:"矽光子族群續創新高！眾達-KY 為博通 CPO 重要合作供應商",s:"財報狗",u:"https://statementdog.com/news/16235"}],
+  sum:"光模組廠轉型高難度 CPO 封裝與標準制定，為博通 51.2T CPO/ELSFP 重要合作夥伴，外部雷射光源模組受惠 AI 資料中心轉 CPO。",
+  drv:["博通 CPO/ELSFP 合作","外部雷射光源模組","CPO 封裝轉型"],
+  rsk:["CPO 放量時點不確定","轉型執行風險"]},
+ "6285":{items:[
+   {t:"啟碁 2026 年 5 月營收 121.68 億、年增 34.82%",s:"鉅亨網",u:"https://www.cnyes.com/twstock/6285"}],
+  sum:"網通廠，2026 年 5 月營收 121.68 億（年增 34.82%）、Q1 EPS 2.36 元（年增 23%），布局寬頻、車用、低軌衛星與企業網通，AI 資料中心網通為新增動能。",
+  drv:["企業網通/資料中心","低軌衛星與車用","營收年增"],
+  rsk:["消費寬頻需求","毛利率壓力"]},
+ "2408":{items:[
+   {t:"DRAM 下半年傳再漲 40–45% 南亞科、華邦電雙創新高價",s:"鉅亨網",u:"https://news.cnyes.com/news/id/6500944"},
+   {t:"外資喊燒漲價題材！南亞科、華邦電、旺宏記憶體 3 雄目標價一次看",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260706900234-420101"}],
+  sum:"DRAM 廠，伺服器 DRAM 下半年漲幅上看 40–45%，大摩指 NAND 供不應求延續至 2027；惟 7/16 前後記憶體股在早盤漲逾 8% 後、因中國兆易創新示警而回檔，漲多震盪、追高留意。",
+  drv:["DRAM 漲價循環（下半年 +40~45%）","AI 帶動伺服器記憶體","市場規模大幅上修"],
+  rsk:["三星擴產利空","記憶體高波動、外資籌碼進出"]},
+ "2344":{items:[
+   {t:"外資喊燒漲價題材！記憶體 3 雄目標價一次看",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260706900234-420101"},
+   {t:"華邦電、南亞科、旺宏…記憶體市場規模破表",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202606010033/"}],
+  sum:"利基型 DRAM 與 NOR Flash 廠，記憶體漲價循環受惠，AI 帶動 NOR Flash 需求穩健，目標價升至 222 元（樂觀情境 264 元）。",
+  drv:["利基 DRAM/NOR 漲價","AI NOR Flash 需求穩健","高雄新廠產能"],
+  rsk:["記憶體循環反轉","三星/原廠擴產壓力"]},
+ "2337":{items:[
+   {t:"外資喊燒漲價題材！記憶體 3 雄目標價一次看",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20260706900234-420101"}],
+  sum:"NOR Flash 與 ROM 龍頭，外資維持首選、目標價 220 元，受惠記憶體漲價與 AI/車用 NOR 需求。",
+  drv:["NOR Flash 龍頭、漲價受惠","AI/車用 NOR 需求","獲利谷底回升"],
+  rsk:["NAND/消費需求疲弱","獲利波動大"]},
+ "3006":{items:[
+   {t:"南亞科、群聯、華邦電、晶豪科、旺宏…記憶體股滿血 外資上調 7 家目標價",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202605140016/"}],
+  sum:"利基型記憶體 IC 設計廠（DRAM/Flash），受惠記憶體漲價循環，外資上調目標價。",
+  drv:["利基記憶體漲價","輕資產設計模式","AI/消費記憶體需求"],
+  rsk:["記憶體價格循環","規模較小、波動大"]},
+ "4967":{items:[
+   {t:"南亞科、群聯、華邦電、晶豪科…記憶體股滿血 外資上調目標價",s:"今周刊",u:"https://www.businesstoday.com.tw/article/category/183008/post/202605140016/"}],
+  sum:"記憶體模組廠，受惠 DRAM/NAND 漲價與 AI 伺服器記憶體需求，模組報價與獲利隨原廠漲價墊高。",
+  drv:["DRAM/NAND 漲價傳導","伺服器/工控記憶體模組","品牌通路布局"],
+  rsk:["模組毛利薄、價格敏感","庫存跌價風險"]},
+ "2308":{items:[
+   {t:"台達電、光寶 AI 電源供貨比 7 成！2026 競爭因 2 原因加劇",s:"經濟日報",u:"https://money.udn.com/money/story/5612/9109934"},
+   {t:"台達電、光寶科卡位 800VDC 商機 AI 電源需求爆發",s:"壹蘋新聞網",u:"https://news.nextapple.com/finance/20260510/1711218059D53628F66FF06B897A25E1"}],
+  sum:"AI 伺服器電源與液冷要角（輝達供應鏈）。7 月消息：Q2 EPS 因 AI 液冷與伺服器電源出貨遞延、下修約 17% 至 9.3 元；惟下半年新 GPU 平台帶動出貨加速，法人估 Q3 EPS 12.3 元（季增 33%）、Q4 15.5 元，HVDC 高壓直流開始小量生產。",
+  drv:["下半年新 GPU 平台帶動電源/液冷放量","HVDC 800V 架構、單櫃電源價值跳升","資料中心業務占比上看 5 成"],
+  rsk:["Q2 出貨遞延、獲利下修 17%","客戶超額下單與電源同業競爭"]},
+ "2301":{items:[
+   {t:"AI 伺服器、BBU 發威！電源雙雄 5 月營收雙增 光寶科寫 91 個月新高",s:"工商時報",u:"https://www.ctee.com.tw/news/20260610700072-439901"},
+   {t:"台達電、光寶 AI 電源供貨比 7 成",s:"經濟日報",u:"https://money.udn.com/money/story/5612/9109934"}],
+  sum:"AI 伺服器電源雙雄之一（輝達供應鏈）。6 月合併營收 187 億元、月增 8%、年增 37%，創近 8 年（2018/9 以來）新高，AI 與雲端高階伺服器電源需求強勁；法人估 Q2、Q3 營收逐季攀升、毛利率站穩 23% 以上。",
+  drv:["AI 伺服器電源/BBU","營收創多年新高","800VDC 商機"],
+  rsk:["供貨比重高、客戶超額下單","傳統業務拖累"]},
+ "6412":{items:[
+   {t:"AI 伺服電力革命 台達、光寶、群電擁題材 群電加吃星鏈商機",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/ai%E4%BC%BA%E6%9C%8D%E9%9B%BB%E5%8A%9B%E9%9D%A9%E5%91%BD-%E5%8F%B0%E9%81%94-%E5%85%89%E5%AF%B6-%E7%BE%A4%E9%9B%BB%E6%93%81%E9%A1%8C%E6%9D%90-%E5%85%89%E5%AF%B6-023651138.html"},
+   {t:"群電：AI 時代下電源供應器老三的發展與機會",s:"富果 Fugle",u:"https://blog.fugle.tw/post/6412-analysis"}],
+  sum:"電源供應器第三大廠，切入 AI 伺服器電源，攜手資策會等打造模組化 AI 算力中心，並加吃星鏈（低軌衛星）電源商機。",
+  drv:["AI 伺服器電源切入","模組化 AI 算力中心","星鏈電源商機"],
+  rsk:["規模與品牌次於雙雄","認證與產能爬坡"]},
+ "8210":{items:[
+   {t:"AI 伺服電力革命 台達、光寶、群電擁題材",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/ai%E4%BC%BA%E6%9C%8D%E9%9B%BB%E5%8A%9B%E9%9D%A9%E5%91%BD-%E5%8F%B0%E9%81%94-%E5%85%89%E5%AF%B6-%E7%BE%A4%E9%9B%BB%E6%93%81%E9%A1%8C%E6%9D%90-%E5%85%89%E5%AF%B6-023651138.html"},
+   {t:"蔡明翰看好 6 檔老 AI：勤誠明年 EPS 翻倍",s:"旺得富理財網",u:"https://wantrich.chinatimes.com/news/20251220900006-420101"}],
+  sum:"伺服器機殼龍頭，2026 EPS 估年增約 6 成、2027 再成長約 4 成，受惠 AI 伺服器機箱與機構件需求。",
+  drv:["AI 伺服器機殼需求","獲利連兩年高成長","高階機構件比重提升"],
+  rsk:["機殼競爭與鋼材成本","出貨節奏波動"]},
+ "3013":{items:[
+   {t:"AI 伺服電力革命 台達、光寶、群電擁題材（機殼提及晟銘電）",s:"Yahoo 股市",u:"https://tw.stock.yahoo.com/news/ai%E4%BC%BA%E6%9C%8D%E9%9B%BB%E5%8A%9B%E9%9D%A9%E5%91%BD-%E5%8F%B0%E9%81%94-%E5%85%89%E5%AF%B6-%E7%BE%A4%E9%9B%BB%E6%93%81%E9%A1%8C%E6%9D%90-%E5%85%89%E5%AF%B6-023651138.html"}],
+  sum:"機殼/機構件廠，切入 AI 伺服器機箱供應鏈，隨 GB 系列機櫃放量與液冷機構需求成長。",
+  drv:["AI 伺服器機構件","GB 機櫃機箱","液冷機構需求"],
+  rsk:["客戶集中度","毛利率與競爭壓力"]},
+};
+
+/* ============ 資料抓取 ============ */
+const ymd=d=>d.toISOString().slice(0,10);
+function daysAgo(n){const d=new Date(); d.setDate(d.getDate()-n); return d;}
+function monthsAgo(n){const d=new Date(); d.setMonth(d.getMonth()-n); return d;}
+async function fj(dataset, code, startDate){
+  const p={dataset}; if(code) p.data_id=code; if(startDate) p.start_date=ymd(startDate);
+  const r=await fetch(API+"?"+new URLSearchParams(p)); const j=await r.json();
+  if(j.status!==200) throw new Error(j.msg||"查詢失敗"); return j.data;
+}
+/* 投信淨買賣序列與連續天數 */
+function trustSeries(inst){
+  const m={}; (inst||[]).forEach(r=>{ if(r.name==="Investment_Trust") m[r.date]=(m[r.date]||0)+(r.buy-r.sell)/1000; });
+  return Object.keys(m).sort().map(d=>({date:d, net:m[d]}));
+}
+function streak(ser){
+  if(!ser.length) return {dir:0,days:0};
+  const last=ser[ser.length-1].net; if(last===0) return {dir:0,days:0};
+  const dir=last>0?1:-1; let n=0;
+  for(let i=ser.length-1;i>=0;i--){ if(Math.sign(ser[i].net)===dir && ser[i].net!==0) n++; else break; }
+  return {dir,days:n};
+}
+const cumN=(ser,n)=>ser.slice(-n).reduce((s,x)=>s+x.net,0);
+/* FinMind 新聞 API 每次 start_date 只回傳「當天」，故逐日抓最近數天再合併 */
+async function fetchNews(code){
+  const dates=[]; for(let i=0;i<7;i++) dates.push(daysAgo(i));
+  const arrs=await Promise.all(dates.map(d=>fj("TaiwanStockNews", code, d).catch(()=>[])));
+  return [].concat(...arrs.map(a=>a||[]));
+}
+const num=(n,d=0)=>Number(n).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const signed=n=>(n>0?"+":"")+num(n);
+const cls=n=>n>0?"pos":(n<0?"neg":"");
+const mdLabel=s=>s.slice(5).replace("-","/");
+
+/* ============ 通用圖表 ============ */
+// 面積折線（股價）
+function areaChart(dates, vals){
+  const W=920,H=260,ML=52,MR=14,MT=14,MB=28,pw=W-ML-MR,ph=H-MT-MB;
+  const v=vals.filter(x=>x!=null); if(!v.length) return "<div class='note'>無資料</div>";
+  let lo=Math.min(...v),hi=Math.max(...v); const pad=(hi-lo||1)*.08; lo-=pad; hi+=pad;
+  const n=dates.length, X=i=>ML+pw*(n<2?.5:i/(n-1)), Y=p=>MT+ph*(hi-p)/(hi-lo);
+  let s=""; const ticks=4;
+  for(let t=0;t<=ticks;t++){const p=lo+(hi-lo)*t/ticks,y=Y(p);
+    s+=`<line x1="${ML}" y1="${y.toFixed(1)}" x2="${W-MR}" y2="${y.toFixed(1)}" stroke="var(--grid)"/>`;
+    s+=`<text class="chart-txt" x="${ML-7}" y="${(y+3.5).toFixed(1)}" text-anchor="end">${p.toFixed(p<50?1:0)}</text>`;}
+  const pts=dates.map((d,i)=>vals[i]!=null?`${X(i).toFixed(1)},${Y(vals[i]).toFixed(1)}`:null).filter(Boolean);
+  s+=`<polygon points="${X(0).toFixed(1)},${Y(lo).toFixed(1)} ${pts.join(" ")} ${X(n-1).toFixed(1)},${Y(lo).toFixed(1)}" fill="var(--accent)" opacity=".12"/>`;
+  s+=`<polyline points="${pts.join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  const step=Math.ceil(n/6);
+  dates.forEach((d,i)=>{ if(i%step===0||i===n-1) s+=`<text class="chart-txt" x="${X(i).toFixed(1)}" y="${H-10}" text-anchor="middle">${mdLabel(d)}</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}">${s}</svg>`;
+}
+// 長條 + 折線（雙軸）
+function comboChart(labels, bars, line, opt){
+  opt=opt||{}; const W=920,H=280,ML=54,MR=54,MT=16,MB=30,pw=W-ML-MR,ph=H-MT-MB;
+  const n=labels.length, band=pw/Math.max(n,1);
+  let blo=Math.min(0,...bars), bhi=Math.max(0,...bars); if(bhi===blo){bhi=1;blo=0;} const bp=(bhi-blo)*.1; bhi+=bp; if(blo<0)blo-=bp;
+  const yB=v=>MT+ph*(bhi-v)/(bhi-blo), y0=yB(0);
+  const hasL=line&&line.some(x=>x!=null);
+  let llo=0,lhi=1; if(hasL){const lv=line.filter(x=>x!=null); llo=Math.min(...lv); lhi=Math.max(...lv); if(lhi===llo){lhi=llo+1;} const lp=(lhi-llo)*.12; llo-=lp; lhi+=lp;}
+  const yL=p=>MT+ph*(lhi-p)/(lhi-llo), cx=i=>ML+band*(i+.5);
+  let s=""; const ticks=4;
+  for(let t=0;t<=ticks;t++){const v=blo+(bhi-blo)*t/ticks,y=yB(v);
+    s+=`<line x1="${ML}" y1="${y.toFixed(1)}" x2="${W-MR}" y2="${y.toFixed(1)}" stroke="var(--grid)"/>`;
+    s+=`<text class="chart-txt" x="${ML-7}" y="${(y+3.5).toFixed(1)}" text-anchor="end">${num(v)}</text>`;}
+  s+=`<line x1="${ML}" y1="${y0.toFixed(1)}" x2="${W-MR}" y2="${y0.toFixed(1)}" stroke="var(--muted)" stroke-opacity=".5"/>`;
+  if(hasL) for(let t=0;t<=ticks;t++){const p=llo+(lhi-llo)*t/ticks,y=yL(p);
+    s+=`<text class="chart-txt" x="${W-MR+7}" y="${(y+3.5).toFixed(1)}" text-anchor="start" fill="var(--f-price)">${opt.rightFmt?opt.rightFmt(p):p.toFixed(0)}</text>`;}
+  bars.forEach((v,i)=>{const w=band*.56,x=cx(i)-w/2,yv=yB(v),y=Math.min(yv,y0),h=Math.max(1,Math.abs(yv-y0));
+    const fill=opt.barColor?opt.barColor(v):(v>=0?"var(--up)":"var(--down)");
+    s+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}"><title>${labels[i]}｜${opt.barTip?opt.barTip(v):num(v)}</title></rect>`;});
+  if(hasL){const pp=labels.map((d,i)=>line[i]!=null?`${cx(i).toFixed(1)},${yL(line[i]).toFixed(1)}`:null).filter(Boolean);
+    s+=`<polyline points="${pp.join(" ")}" fill="none" stroke="var(--f-price)" stroke-width="2"/>`;
+    labels.forEach((d,i)=>{if(line[i]!=null)s+=`<circle cx="${cx(i).toFixed(1)}" cy="${yL(line[i]).toFixed(1)}" r="3" fill="var(--f-price)"><title>${d}｜${opt.lineTip?opt.lineTip(line[i]):line[i]}</title></circle>`;});}
+  const step=Math.max(1,Math.ceil(n/(n<=13?1:6)));
+  labels.forEach((d,i)=>{if(i%step===0||i===n-1)s+=`<text class="chart-txt" x="${cx(i).toFixed(1)}" y="${H-10}" text-anchor="middle">${d}</text>`;});
+  return `<svg viewBox="0 0 ${W} ${H}">${s}</svg>`;
+}
+
+/* ============ 大盤風向 ============ */
+async function loadMarket(){
+  const box=$("market"); if(!box) return;
+  try{
+    const [tot, fut] = await Promise.all([
+      fj("TaiwanStockTotalInstitutionalInvestors", null, daysAgo(8)),
+      fj("TaiwanFuturesInstitutionalInvestors", "TX", daysAgo(8)).catch(()=>[]),
+    ]);
+    const dts=[...new Set(tot.map(r=>r.date))].sort(); const day=dts[dts.length-1];
+    let f=0,t=0,d=0; tot.filter(r=>r.date===day).forEach(r=>{const net=(r.buy-r.sell)/1e8;
+      if(/Foreign/.test(r.name)) f+=net; else if(r.name==="Investment_Trust") t+=net; else d+=net;});
+    let futHtml=`<div class="mtile"><div class="l">台指期外資</div><div class="v">–</div><div class="u">未平倉</div></div>`;
+    if(fut&&fut.length){
+      const fd=[...new Set(fut.map(r=>r.date))].sort(); const fday=fd[fd.length-1];
+      const fx=fut.find(r=>r.date===fday && r.institutional_investors==="外資");
+      if(fx){const oi=(fx.long_open_interest_balance_volume||0)-(fx.short_open_interest_balance_volume||0);
+        futHtml=`<div class="mtile"><div class="l">台指期外資</div><div class="v ${cls(oi)}">${oi>0?'淨多 ':'淨空 '}${num(Math.abs(oi))}</div><div class="u">未平倉口數</div></div>`;}
+    }
+    const tile=(l,v)=>`<div class="mtile"><div class="l">${l}（現貨）</div><div class="v ${cls(v)}">${signed(v.toFixed(1))}</div><div class="u">億元</div></div>`;
+    box.querySelector(".dt").textContent=day;
+    box.querySelector(".mtiles").innerHTML=tile("外資",f)+tile("投信",t)+tile("自營商",d)+futHtml;
+  }catch(e){ box.querySelector(".mtiles").innerHTML=`<div class="note">大盤資料載入失敗：${e.message}</div>`; }
+}
+
+/* ============ AI 類股投信雷達 ============ */
+let RADAR_CACHE=null;
+function aiUniverse(){
+  const seen={}, list=[];
+  SECTORS.forEach(s=>s.stocks.forEach(([c,n])=>{ if(!seen[c]){seen[c]=1; list.push([c,n]);} }));
+  return list;
+}
+async function scanTrust(){
+  if(RADAR_CACHE){ renderRadar(RADAR_CACHE); return; }
+  const body=$("radar-body"); const list=aiUniverse(); const res=[];
+  for(let i=0;i<list.length;i+=6){
+    const chunk=list.slice(i,i+6);
+    await Promise.all(chunk.map(async ([c,nm])=>{
+      try{ const inst=await fj("TaiwanStockInstitutionalInvestorsBuySell", c, daysAgo(60));
+        const ser=trustSeries(inst); const st=streak(ser);
+        res.push({c, nm, dir:st.dir, days:st.days, cum20:cumN(ser,20)});
+      }catch(e){}
+    }));
+    if(body) body.innerHTML=`<div class="note">掃描中… ${Math.min(i+6,list.length)} / ${list.length}</div>`;
+  }
+  RADAR_CACHE=res; renderRadar(res);
+}
+function renderRadar(res){
+  const body=$("radar-body"); if(!body) return;
+  const rowsFrom=arr=>arr.map((x,i)=>`<div class="rrow" data-c="${x.c}">
+    <span class="rk">${i+1}</span><span class="rn"><span class="c">${x.c}</span>${x.nm}</span>
+    <span class="rv ${x.v>=0?'pos':'neg'}">${x.label}</span></div>`).join("")||'<div class="note">無</div>';
+  const buyStreak=res.filter(x=>x.dir===1).sort((a,b)=>b.days-a.days).slice(0,12).map(x=>({...x,v:x.days,label:x.days+" 天"}));
+  const sellStreak=res.filter(x=>x.dir===-1).sort((a,b)=>b.days-a.days).slice(0,12).map(x=>({...x,v:-x.days,label:x.days+" 天"}));
+  const cumBuy=res.slice().sort((a,b)=>b.cum20-a.cum20).slice(0,12).map(x=>({...x,v:x.cum20,label:signed(x.cum20)}));
+  body.innerHTML=`<div class="radar-cols">
+    <div class="rcol"><h5 class="pos">🔥 投信連買天數榜</h5>${rowsFrom(buyStreak)}</div>
+    <div class="rcol"><h5 style="color:var(--accent)">💰 近20日投信買超榜（張）</h5>${rowsFrom(cumBuy)}</div>
+    <div class="rcol"><h5 class="neg">⚠ 投信連賣天數榜（撤退警訊）</h5>${rowsFrom(sellStreak)}</div>
+  </div>
+  <div class="note">掃描範圍：本站 AI 類股清單（${aiUniverse().length} 檔），非全市場。點列可看個股。</div>`;
+  body.querySelectorAll(".rrow").forEach(r=>r.onclick=()=>showDetail(r.dataset.c));
+}
+
+/* ============ 分類首頁 ============ */
+function renderHome(){
+  codeEl.style.display="";
+  view.innerHTML=`
+    <div class="market" id="market"><div class="mh"><span>大盤風向 · 三大法人與台指期</span><span class="dt">載入中…</span></div>
+      <div class="mtiles"><div class="note">載入中…</div></div></div>
+    <div class="radar"><div class="mh" style="margin-bottom:10px"><span>AI 類股投信雷達</span></div>
+      <div id="radar-body"><button class="radar-btn" id="radar-go">🔍 掃描 AI 類股投信動向（連買天數・累積買超）</button>
+      <div class="note">掃描約 ${aiUniverse().length} 檔 AI 類股的投信買賣，找出連買天數最長與近20日買超最多者。</div></div></div>
+    <div class="sectors">`+SECTORS.map(sec=>`
+    <div class="sector">
+      <h3>${sec.name}</h3><p class="d">${sec.d}</p>
+      <div class="chips">${sec.stocks.map(([c,nm])=>
+        `<span class="chip" data-c="${c}"><span class="c">${c}</span>${nm}</span>`).join("")}</div>
+    </div>`).join("")+`</div>`;
+  view.querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>showDetail(ch.dataset.c));
+  const rg=$("radar-go"); if(rg) rg.onclick=scanTrust;
+  if(RADAR_CACHE) renderRadar(RADAR_CACHE);
+  loadMarket();
+}
+
+/* ============ 個股詳細 ============ */
+async function showDetail(code){
+  code=(code||"").trim(); if(!code) return;
+  location.hash=code;
+  view.innerHTML='<div class="status">載入中…</div>';
+  try{
+    const [info, price, per, rev, inst, hold, news] = await Promise.all([
+      fj("TaiwanStockInfo", code).catch(()=>[]),
+      fj("TaiwanStockPrice", code, monthsAgo(7)).catch(()=>[]),
+      fj("TaiwanStockPER", code, daysAgo(20)).catch(()=>[]),
+      fj("TaiwanStockMonthRevenue", code, monthsAgo(26)).catch(()=>[]),
+      fj("TaiwanStockInstitutionalInvestorsBuySell", code, daysAgo(95)).catch(()=>[]),
+      fj("TaiwanStockShareholding", code, daysAgo(95)).catch(()=>[]),
+      fetchNews(code).catch(()=>[]),
+    ]);
+    if((!price||!price.length) && (!info||!info.length)){
+      view.innerHTML='<div class="status">查無此代碼資料，請確認股票代碼。</div>'; return; }
+    renderDetail(code, info, price, per, rev, inst, hold, news);
+  }catch(e){ view.innerHTML='<div class="status">發生錯誤：'+e.message+'</div>'; }
+}
+
+function renderDetail(code, info, price, per, rev, inst, hold, news){
+  codeEl.style.display="none";
+  const nm=info?.[0]?.stock_name||"", ind=info?.[0]?.industry_category||"";
+  const lp=price?.[price.length-1];
+
+  // 估值
+  const pv=per?.[per.length-1]||{};
+  // 營收 YoY
+  const rmap={}; (rev||[]).forEach(r=>rmap[r.revenue_year+"-"+r.revenue_month]=r.revenue);
+  const rsorted=(rev||[]).slice().sort((a,b)=>a.revenue_year-b.revenue_year||a.revenue_month-b.revenue_month);
+  const last=rsorted.slice(-13);
+  const revLabels=last.map(r=>String(r.revenue_year).slice(2)+"/"+String(r.revenue_month).padStart(2,"0"));
+  const revBars=last.map(r=>r.revenue/1e8); // 億
+  const revYoY=last.map(r=>{const py=rmap[(r.revenue_year-1)+"-"+r.revenue_month]; return py?(r.revenue/py-1)*100:null;});
+  const latestRev=last[last.length-1], latestYoY=revYoY[revYoY.length-1];
+
+  // 法人（近10日）
+  const G={Foreign_Investor:"f",Foreign_Dealer_Self:"f",Investment_Trust:"t",Dealer_self:"d",Dealer_Hedging:"d"};
+  const bd={}; (inst||[]).forEach(r=>{const g=G[r.name]; if(!g)return; (bd[r.date]||={f:0,t:0,d:0})[g]+=(r.buy-r.sell)/1000;});
+  const idates=Object.keys(bd).sort().slice(-10);
+  const pmap={}; (price||[]).forEach(p=>pmap[p.date]=p.close);
+  const instTot=idates.map(d=>bd[d].f+bd[d].t+bd[d].d);
+  const instPrice=idates.map(d=>pmap[d]??null);
+  let sf=0,st=0,sd=0; idates.forEach(d=>{sf+=bd[d].f;st+=bd[d].t;sd+=bd[d].d;});
+
+  // 投信動向
+  const tser=trustSeries(inst); const tst=streak(tser); const tcum20=cumN(tser,20);
+  const tlast=tser.slice(-25); let run=0; const trun=tlast.map(x=>{run+=x.net; return run;});
+  let sBig, sLbl, sCls, sFlag="";
+  if(tst.dir===1){ sBig=`${tst.days}<small> 天</small>`; sLbl="投信連續買超"; sCls="pos";
+    if(tst.days>=5) sFlag=`<div class="flag hot">🔥 投信連買 ${tst.days} 天，資金持續流入</div>`;
+  }else if(tst.dir===-1){ sBig=`${tst.days}<small> 天</small>`; sLbl="投信連續賣超"; sCls="neg";
+    if(tst.days>=5) sFlag=`<div class="flag warn">⚠ 投信連賣 ${tst.days} 天，注意基金可能撤退；若股價已大漲更要警覺</div>`;
+  }else{ sBig="—"; sLbl="投信近日無連續買賣超"; sCls=""; }
+  const trustHtml=`<div class="panel">
+    <div class="panel-h"><span class="t">投信動向 ⭐</span><span class="meta">近 ${tser.length} 個交易日</span></div>
+    <div class="streak">
+      <div><div class="lbl">${sLbl}</div><div class="big ${sCls}">${sBig}</div></div>
+      <div><div class="lbl">近 20 日投信累積買賣超</div><div class="big ${cls(tcum20)}">${signed(Math.round(tcum20))}<small> 張</small></div></div>
+    </div>
+    ${sFlag}
+    ${tlast.length?comboChart(tlast.map(x=>mdLabel(x.date)), tlast.map(x=>x.net), trun,
+      {barColor:v=>v>=0?"var(--f-trust)":"var(--down)", barTip:v=>signed(Math.round(v))+" 張",
+       rightFmt:p=>num(p), lineTip:v=>"累積 "+signed(Math.round(v))+" 張"}):""}
+    <div class="legend"><span><i style="background:var(--f-trust)"></i>投信單日淨買賣（張）</span><span><span class="li"></span>區間累積買賣超</span></div>
+  </div>`;
+
+  // 外資持股比例（免費資料僅有外資，非投信）
+  const hsorted=(hold||[]).slice().sort((a,b)=>a.date<b.date?-1:1);
+  let holdHtml="";
+  if(hsorted.length){
+    const hlast=hsorted[hsorted.length-1];
+    const ratio=hlast.ForeignInvestmentSharesRatio;
+    const hvals=hsorted.map(h=>h.ForeignInvestmentSharesRatio);
+    const first=hvals[0], chg=ratio-first;
+    holdHtml=`<div class="panel">
+      <div class="panel-h"><span class="t">外資持股比例</span><span class="meta">近 3 個月 · 最新 ${ratio!=null?num(ratio,2)+"%":"–"}（${chg>=0?"+":""}${num(chg,2)} pts）</span></div>
+      ${areaChart(hsorted.map(h=>h.date), hvals)}
+      <div class="note">此為外資持股比例（證交所每日公告）。投信真實持股比例需付費資料，本站改以上方「投信累積買賣超」呈現增減持趨勢。</div>
+    </div>`;
+  }
+
+  const pxHtml=lp?`<div class="px"><div class="p">${lp.close}</div>
+    <div class="dd ${cls(lp.spread)}">${lp.spread>0?'▲':lp.spread<0?'▼':''} ${Math.abs(lp.spread??0).toFixed(2)}</div></div>`:"";
+  const vcard=(l,v,cap)=>`<div class="card"><div class="lbl">${l}</div><div class="val">${v}</div><div class="cap">${cap}</div></div>`;
+
+  // 即時研判（依當日數據自動產生，每次開啟更新）
+  const pc=(price||[]).map(p=>p.close);
+  const pxChg = pc.length>21 ? (pc[pc.length-1]/pc[pc.length-22]-1)*100 : null;
+  let score=0;
+  if(tst.dir===1&&tst.days>=3) score++; else if(tst.dir===-1&&tst.days>=3) score--;
+  if(sf>0) score++; else if(sf<0) score--;
+  if(latestYoY>0) score++; else if(latestYoY!=null&&latestYoY<0) score--;
+  const verdict = score>=2?{t:"偏多",c:"pos"}:score<=-2?{t:"偏空",c:"neg"}:{t:"中性",c:""};
+  const facts=[
+    `投信：${tst.dir===1?"連買 "+tst.days+" 天":tst.dir===-1?"連賣 "+tst.days+" 天":"無連續買賣超"}（近 20 日 ${signed(Math.round(tcum20))} 張）`,
+    `外資：近 10 日合計 ${signed(Math.round(sf))} 張`,
+    latestYoY!=null?`營收：最新月 YoY ${signed(latestYoY.toFixed(1))}%`:null,
+    pv.PER!=null?`估值：本益比 ${num(pv.PER,1)} 倍`:null,
+    pxChg!=null?`股價：近一個月 ${signed(pxChg.toFixed(1))}%`:null,
+  ].filter(Boolean);
+  let caution="";
+  if(tst.dir===-1&&tst.days>=5) caution="⚠ 投信連賣，注意基金可能撤退。";
+  if(pv.PER>40 && pxChg>15) caution+=(caution?" ":"")+"估值偏高且近月漲多，追高留意。";
+  const briefHtml=`<div class="ai-box" style="margin-bottom:14px">
+    <h5>⚡ 即時研判 <span style="font-weight:400;color:var(--muted)">· 依當日數據自動產生</span> ｜ 綜合：<span class="${verdict.c}">${verdict.t}</span></h5>
+    <ul>${facts.map(f=>`<li>${f}</li>`).join("")}</ul>
+    ${caution?`<div class="flag warn" style="margin-top:6px">${caution}</div>`:""}</div>`;
+
+  // 即時新聞（每次開啟自動更新，來源 FinMind）
+  const seen={}; const nlist=(news||[]).filter(n=>{if(!n.link||seen[n.link])return false; seen[n.link]=1; return true;})
+    .sort((a,b)=>a.date<b.date?1:-1).slice(0,7);
+  const cleanT=(t,s)=> t.endsWith(" - "+s)? t.slice(0, t.length-(s.length+3)) : t;
+  const liveNewsHtml = nlist.length
+    ? `<ul class="news-list">${nlist.map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${cleanT(n.title,n.source)}</a><div class="src">${n.source} · ${n.date.slice(0,10)} ↗</div></li>`).join("")}</ul>`
+    : `<p class="note">近期無即時新聞，可至 <a href="https://tw.stock.yahoo.com/quote/${code}.TW/news" target="_blank" rel="noopener" style="color:var(--accent)">Yahoo 股市</a> 查看。</p>`;
+
+  const nw=NEWS[code];
+  const verifiedHtml = nw?`
+      <div class="panel-h" style="margin-top:4px"><span class="t">深度分析（AI 查證大綱）</span><span class="meta">經網路查證 · 截至 ${AS_OF}</span></div>
+      <p class="ai-sum">${nw.sum}</p>
+      <div class="ai-grid">
+        <div class="ai-box"><h5 class="drv">▲ 成長動能</h5><ul>${nw.drv.map(x=>`<li>${x}</li>`).join("")}</ul></div>
+        <div class="ai-box"><h5 class="rsk">▼ 風險 / 觀察</h5><ul>${nw.rsk.map(x=>`<li>${x}</li>`).join("")}</ul></div>
+      </div>`:`<p class="note">此檔尚未內建深度查證分析；上方「即時研判」與下方「即時新聞」每次開啟皆自動更新。</p>`;
+
+  const aiHtml=`<div class="panel">
+      <div class="panel-h"><span class="t">新聞 / AI 分析</span></div>
+      ${briefHtml}
+      ${verifiedHtml}
+      <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞</span><span class="meta">每次開啟自動更新 · 來源 FinMind</span></div>
+      ${liveNewsHtml}
+    </div>`;
+
+  view.innerHTML=`
+    <button class="back" id="back">← 返回子板塊分類</button>
+    <div class="head"><span class="code">${code}</span><span class="name">${nm}</span>
+      ${ind?`<span class="ind">${ind}</span>`:""}${pxHtml}</div>
+
+    <div class="cards">
+      ${vcard("本益比 PER", pv.PER!=null?num(pv.PER,2):"–", "估值")}
+      ${vcard("股價淨值比 PBR", pv.PBR!=null?num(pv.PBR,2):"–", "估值")}
+      ${vcard("殖利率", pv.dividend_yield!=null?num(pv.dividend_yield,2)+"%":"–", "現金殖利率")}
+      ${vcard("最新月營收 YoY", latestYoY!=null?`<span class="${cls(latestYoY)}">${signed(latestYoY.toFixed(1))}%</span>`:"–", latestRev?revLabels[revLabels.length-1]+" 月":"")}
+    </div>
+
+    ${trustHtml}
+
+    ${aiHtml}
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">股價走勢</span><span class="meta">近 6 個月收盤價</span></div>
+      ${areaChart((price||[]).map(p=>p.date),(price||[]).map(p=>p.close))}
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">月營收成長</span><span class="meta">近 13 個月（長條：營收億元、折線：YoY%）</span></div>
+      ${last.length?comboChart(revLabels, revBars, revYoY, {barColor:()=>"var(--accent)", barTip:v=>num(v)+" 億", rightFmt:p=>p.toFixed(0)+"%", lineTip:v=>v.toFixed(1)+"%"}):'<div class="note">無營收資料</div>'}
+      <div class="legend"><span><i style="background:var(--accent)"></i>月營收（億）</span><span><span class="li"></span>年增率 YoY</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">三大法人買賣超</span><span class="meta">近 10 日（長條：合計張數、折線：收盤價）</span></div>
+      ${idates.length?comboChart(idates.map(mdLabel), instTot, instPrice, {barTip:v=>signed(v)+" 張", rightFmt:p=>p.toFixed(0), lineTip:v=>v}):'<div class="note">無法人資料</div>'}
+      <div class="legend"><span><i style="background:var(--up)"></i>買超</span><span><i style="background:var(--down)"></i>賣超</span><span><span class="li"></span>收盤價</span></div>
+      ${idates.length?`<div class="tablewrap"><table>
+        <thead><tr><th>日期</th><th>外資</th><th>投信</th><th>自營商</th><th>合計</th></tr></thead>
+        <tbody>${idates.slice().reverse().map(d=>{const x=bd[d];const tot=x.f+x.t+x.d;
+          return `<tr><td class="date">${d}</td><td class="${cls(x.f)}">${signed(x.f)}</td><td class="${cls(x.t)}">${signed(x.t)}</td><td class="${cls(x.d)}">${signed(x.d)}</td><td class="${cls(tot)}">${signed(tot)}</td></tr>`;}).join("")}</tbody>
+        <tfoot><tr><td>近10日</td><td class="${cls(sf)}">${signed(sf)}</td><td class="${cls(st)}">${signed(st)}</td><td class="${cls(sd)}">${signed(sd)}</td><td class="${cls(sf+st+sd)}">${signed(sf+st+sd)}</td></tr></tfoot>
+      </table></div>`:""}
+      <div class="note">單位：張（1 張 = 1000 股）· 紅買超、綠賣超。外資含外資自營商；自營商含自行買賣與避險。</div>
+    </div>
+
+    ${holdHtml}`;
+
+  $("back").onclick=()=>{location.hash=""; renderHome();};
+}
+
+/* ============ 啟動 ============ */
+$("go").onclick=()=>showDetail(codeEl.value);
+codeEl.addEventListener("keydown",e=>{if(e.key==="Enter")showDetail(codeEl.value);});
+$("home").onclick=()=>{location.hash=""; renderHome();};
+window.addEventListener("hashchange",()=>{const h=location.hash.slice(1); if(h) showDetail(h); else renderHome();});
+const h0=location.hash.slice(1);
+if(h0) showDetail(h0); else renderHome();
+</script>
+</body>
+</html>

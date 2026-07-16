@@ -1,0 +1,4 @@
+.claude/
+.DS_Store
+_debug_*.html
+__pycache__/
