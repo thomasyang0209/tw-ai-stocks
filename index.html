@@ -124,6 +124,10 @@
   .flag.hot{background:var(--up-soft,rgba(239,77,90,.14)); color:var(--up)}
   .flag.warn{background:rgba(240,136,62,.14); color:var(--f-dealer)}
   .flag.cool{background:var(--down-soft,rgba(38,162,105,.14)); color:var(--down)}
+  .tag{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:6px; margin-left:7px; vertical-align:middle; letter-spacing:.3px; white-space:nowrap}
+  .tag.live{background:rgba(79,157,255,.16); color:var(--accent)}
+  .tag.daily{background:rgba(240,136,62,.18); color:var(--f-dealer)}
+  .tag-legend{font-size:12.5px; color:var(--muted); margin:-10px 2px 20px; display:flex; gap:16px; flex-wrap:wrap}
   .status{padding:44px 0; text-align:center; color:var(--muted)}
   .note{color:var(--muted); font-size:12px; line-height:1.6; margin-top:8px}
   .disc{color:var(--muted); font-size:11.5px; line-height:1.6; margin-top:26px; border-top:1px solid var(--line); padding-top:14px}
@@ -133,6 +137,10 @@
 <div class="wrap">
   <h1 id="home">台股 AI 類股動態</h1>
   <p class="sub">AI 供應鏈子板塊分類 · 點選個股看股價走勢、營收成長、估值比、三大法人與經查證的 AI 分析</p>
+  <div class="tag-legend">
+    <span><span class="tag live">即時</span> 每次開啟即更新（抓當下資料）</span>
+    <span><span class="tag daily">每日</span> 排程每天更新一次（查證文字）</span>
+  </div>
   <div class="searchbar">
     <input id="code" type="text" inputmode="numeric" placeholder="或直接輸入股票代碼，例如 2330" autocomplete="off">
     <button class="go" id="go">查詢</button>
@@ -637,10 +645,10 @@ function renderRadar(res){
 function renderHome(){
   codeEl.style.display="";
   view.innerHTML=`
-    <div class="market" id="market"><div class="mh"><span>大盤風向 · 三大法人與台指期</span><span class="dt">載入中…</span></div>
+    <div class="market" id="market"><div class="mh"><span>大盤風向 · 三大法人與台指期<span class="tag live">即時</span></span><span class="dt">載入中…</span></div>
       <div class="mtiles"><div class="note">載入中…</div></div></div>
     <div class="panel">
-      <div class="panel-h"><span class="t">每日大盤分析</span><span class="meta">客觀中立 · 經查證 · 截至 ${MARKET.asOf}</span></div>
+      <div class="panel-h"><span class="t">每日大盤分析<span class="tag daily">每日</span></span><span class="meta">客觀中立 · 經查證 · 截至 ${MARKET.asOf}</span></div>
       <p class="ai-sum">${MARKET.summary}</p>
       <div class="ai-grid">
         <div class="ai-box"><h5 class="drv">＋ 正面因子</h5><ul>${MARKET.pos.map(x=>`<li>${x}</li>`).join("")}</ul></div>
@@ -719,7 +727,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     if(tst.days>=5) sFlag=`<div class="flag warn">⚠ 投信連賣 ${tst.days} 天，注意基金可能撤退；若股價已大漲更要警覺</div>`;
   }else{ sBig="—"; sLbl="投信近日無連續買賣超"; sCls=""; }
   const trustHtml=`<div class="panel">
-    <div class="panel-h"><span class="t">投信動向 ⭐</span><span class="meta">近 ${tser.length} 個交易日</span></div>
+    <div class="panel-h"><span class="t">投信動向 ⭐<span class="tag live">即時</span></span><span class="meta">近 ${tser.length} 個交易日</span></div>
     <div class="streak">
       <div><div class="lbl">${sLbl}</div><div class="big ${sCls}">${sBig}</div></div>
       <div><div class="lbl">近 20 日投信累積買賣超</div><div class="big ${cls(tcum20)}">${signed(Math.round(tcum20))}<small> 張</small></div></div>
@@ -740,7 +748,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     const hvals=hsorted.map(h=>h.ForeignInvestmentSharesRatio);
     const first=hvals[0], chg=ratio-first;
     holdHtml=`<div class="panel">
-      <div class="panel-h"><span class="t">外資持股比例</span><span class="meta">近 3 個月 · 最新 ${ratio!=null?num(ratio,2)+"%":"–"}（${chg>=0?"+":""}${num(chg,2)} pts）</span></div>
+      <div class="panel-h"><span class="t">外資持股比例<span class="tag live">即時</span></span><span class="meta">近 3 個月 · 最新 ${ratio!=null?num(ratio,2)+"%":"–"}（${chg>=0?"+":""}${num(chg,2)} pts）</span></div>
       ${areaChart(hsorted.map(h=>h.date), hvals)}
       <div class="note">此為外資持股比例（證交所每日公告）。投信真實持股比例需付費資料，本站改以上方「投信累積買賣超」呈現增減持趨勢。</div>
     </div>`;
@@ -799,7 +807,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
   if(tst.dir===-1&&tst.days>=5) reason+=`　且投信已連賣 ${tst.days} 天，留意基金撤退訊號。`;
 
   const crossHtml=`<div class="ai-box" style="margin-bottom:14px">
-    <h5>🔀 三面交叉分析（新聞面 × 籌碼面 × 基本面）<span style="font-weight:400;color:var(--muted)"> · 依當日數據自動產生</span> ｜ 綜合：<span class="${verdict.c}">${verdict.t}</span></h5>
+    <h5>🔀 三面交叉分析（新聞面 × 籌碼面 × 基本面）<span class="tag live">即時</span><span style="font-weight:400;color:var(--muted)"> · 依當日數據自動產生</span> ｜ 綜合：<span class="${verdict.c}">${verdict.t}</span></h5>
     <ul>
       <li><b>新聞面：</b>${newsPts.join("；")}</li>
       <li><b>籌碼面（<span class="${chipD.c}">${chipD.t}</span>）：</b>${chipPts.join("、")}</li>
@@ -808,7 +816,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     <div style="margin-top:8px;line-height:1.75"><b>綜合原因：</b>${reason}</div></div>`;
 
   const verifiedHtml = nw?`
-      <div class="panel-h" style="margin-top:4px"><span class="t">深度分析（AI 查證大綱）</span><span class="meta">經網路查證 · 截至 ${AS_OF}</span></div>
+      <div class="panel-h" style="margin-top:4px"><span class="t">深度分析（AI 查證大綱）<span class="tag daily">每日</span></span><span class="meta">經網路查證 · 截至 ${AS_OF}</span></div>
       <p class="ai-sum">${nw.sum}</p>
       <div class="ai-grid">
         <div class="ai-box"><h5 class="drv">▲ 成長動能</h5><ul>${nw.drv.map(x=>`<li>${x}</li>`).join("")}</ul></div>
@@ -819,7 +827,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
       <div class="panel-h"><span class="t">新聞 / AI 分析</span></div>
       ${crossHtml}
       ${verifiedHtml}
-      <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞</span><span class="meta">每次開啟自動更新 · 來源 FinMind</span></div>
+      <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞<span class="tag live">即時</span></span><span class="meta">每次開啟自動更新 · 來源 FinMind</span></div>
       ${liveNewsHtml}
     </div>`;
 
@@ -840,18 +848,18 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     ${aiHtml}
 
     <div class="panel">
-      <div class="panel-h"><span class="t">股價走勢</span><span class="meta">近 6 個月收盤價</span></div>
+      <div class="panel-h"><span class="t">股價走勢<span class="tag live">即時</span></span><span class="meta">近 6 個月收盤價</span></div>
       ${areaChart((price||[]).map(p=>p.date),(price||[]).map(p=>p.close))}
     </div>
 
     <div class="panel">
-      <div class="panel-h"><span class="t">月營收成長</span><span class="meta">近 13 個月（長條：營收億元、折線：YoY%）</span></div>
+      <div class="panel-h"><span class="t">月營收成長<span class="tag live">即時</span></span><span class="meta">近 13 個月（長條：營收億元、折線：YoY%）</span></div>
       ${last.length?comboChart(revLabels, revBars, revYoY, {barColor:()=>"var(--accent)", barTip:v=>num(v)+" 億", rightFmt:p=>p.toFixed(0)+"%", lineTip:v=>v.toFixed(1)+"%"}):'<div class="note">無營收資料</div>'}
       <div class="legend"><span><i style="background:var(--accent)"></i>月營收（億）</span><span><span class="li"></span>年增率 YoY</span></div>
     </div>
 
     <div class="panel">
-      <div class="panel-h"><span class="t">三大法人買賣超</span><span class="meta">近 10 日（長條：合計張數、折線：收盤價）</span></div>
+      <div class="panel-h"><span class="t">三大法人買賣超<span class="tag live">即時</span></span><span class="meta">近 10 日（長條：合計張數、折線：收盤價）</span></div>
       ${idates.length?comboChart(idates.map(mdLabel), instTot, instPrice, {barTip:v=>signed(v)+" 張", rightFmt:p=>p.toFixed(0), lineTip:v=>v}):'<div class="note">無法人資料</div>'}
       <div class="legend"><span><i style="background:var(--up)"></i>買超</span><span><i style="background:var(--down)"></i>賣超</span><span><span class="li"></span>收盤價</span></div>
       ${idates.length?`<div class="tablewrap"><table>
