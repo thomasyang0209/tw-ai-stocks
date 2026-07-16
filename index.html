@@ -124,6 +124,8 @@
   .flag.hot{background:var(--up-soft,rgba(239,77,90,.14)); color:var(--up)}
   .flag.warn{background:rgba(240,136,62,.14); color:var(--f-dealer)}
   .flag.cool{background:var(--down-soft,rgba(38,162,105,.14)); color:var(--down)}
+  button.ghost{background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:9px; cursor:pointer; font-size:13px}
+  button.ghost:hover{border-color:var(--accent); color:var(--accent)}
   .tag{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:6px; margin-left:7px; vertical-align:middle; letter-spacing:.3px; white-space:nowrap}
   .tag.live{background:rgba(79,157,255,.16); color:var(--accent)}
   .tag.daily{background:rgba(240,136,62,.18); color:var(--f-dealer)}
@@ -504,11 +506,25 @@ const NEWS={
 const ymd=d=>d.toISOString().slice(0,10);
 function daysAgo(n){const d=new Date(); d.setDate(d.getDate()-n); return d;}
 function monthsAgo(n){const d=new Date(); d.setMonth(d.getMonth()-n); return d;}
+const CACHE_TTL=30*60*1000; // 本機快取 30 分鐘，減少 FinMind 請求數、避免觸及免費上限
 async function fj(dataset, code, startDate){
-  const p={dataset}; if(code) p.data_id=code; if(startDate) p.start_date=ymd(startDate);
-  const r=await fetch(API+"?"+new URLSearchParams(p)); const j=await r.json();
-  if(j.status!==200) throw new Error(j.msg||"查詢失敗"); return j.data;
+  const key="fm:"+dataset+"|"+(code||"")+"|"+(startDate?ymd(startDate):"");
+  let cached=null; try{ cached=JSON.parse(localStorage.getItem(key)||"null"); }catch(e){}
+  if(cached && Date.now()-cached.t < CACHE_TTL) return cached.d;   // 新鮮快取直接用
+  try{
+    const p={dataset}; if(code) p.data_id=code; if(startDate) p.start_date=ymd(startDate);
+    const r=await fetch(API+"?"+new URLSearchParams(p)); const j=await r.json();
+    if(j.status!==200) throw new Error(j.msg||"查詢失敗");
+    try{ localStorage.setItem(key, JSON.stringify({t:Date.now(), d:j.data})); }catch(e){}
+    return j.data;
+  }catch(e){
+    if(cached) return cached.d;   // 限流/離線時退回舊快取，維持可用
+    throw e;
+  }
 }
+const friendlyErr=e=>/Failed to fetch|upper limit|402|NetworkError|Load failed/i.test(e&&e.message||"")
+  ? "資料來源暫時無法讀取——可能已達 FinMind 每小時免費請求上限（會自動重置）。請稍候幾分鐘再重試。"
+  : (e&&e.message||"未知錯誤");
 /* 投信淨買賣序列與連續天數 */
 function trustSeries(inst){
   const m={}; (inst||[]).forEach(r=>{ if(r.name==="Investment_Trust") m[r.date]=(m[r.date]||0)+(r.buy-r.sell)/1000; });
@@ -524,7 +540,7 @@ function streak(ser){
 const cumN=(ser,n)=>ser.slice(-n).reduce((s,x)=>s+x.net,0);
 /* FinMind 新聞 API 每次 start_date 只回傳「當天」，故逐日抓最近數天再合併 */
 async function fetchNews(code){
-  const dates=[]; for(let i=0;i<7;i++) dates.push(daysAgo(i));
+  const dates=[]; for(let i=0;i<4;i++) dates.push(daysAgo(i));
   const arrs=await Promise.all(dates.map(d=>fj("TaiwanStockNews", code, d).catch(()=>[])));
   return [].concat(...arrs.map(a=>a||[]));
 }
@@ -599,7 +615,8 @@ async function loadMarket(){
     const tile=(l,v)=>`<div class="mtile"><div class="l">${l}（現貨）</div><div class="v ${cls(v)}">${signed(v.toFixed(1))}</div><div class="u">億元</div></div>`;
     box.querySelector(".dt").textContent=day;
     box.querySelector(".mtiles").innerHTML=tile("外資",f)+tile("投信",t)+tile("自營商",d)+futHtml;
-  }catch(e){ box.querySelector(".mtiles").innerHTML=`<div class="note">大盤資料載入失敗：${e.message}</div>`; }
+  }catch(e){ box.querySelector(".mtiles").innerHTML=`<div class="note">${friendlyErr(e)} <button class="ghost" id="mkRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`;
+    const rb=$("mkRetry"); if(rb) rb.onclick=loadMarket; }
 }
 
 /* ============ AI 類股投信雷達 ============ */
@@ -611,6 +628,8 @@ function aiUniverse(){
 }
 async function scanTrust(){
   if(RADAR_CACHE){ renderRadar(RADAR_CACHE); return; }
+  const rkey="radar:"+ymd(new Date());
+  try{ const c=JSON.parse(localStorage.getItem(rkey)||"null"); if(c&&c.length){ RADAR_CACHE=c; renderRadar(c); return; } }catch(e){}
   const body=$("radar-body"); const list=aiUniverse(); const res=[];
   for(let i=0;i<list.length;i+=6){
     const chunk=list.slice(i,i+6);
@@ -622,7 +641,9 @@ async function scanTrust(){
     }));
     if(body) body.innerHTML=`<div class="note">掃描中… ${Math.min(i+6,list.length)} / ${list.length}</div>`;
   }
-  RADAR_CACHE=res; renderRadar(res);
+  if(!res.length){ if(body) body.innerHTML=`<div class="note">${friendlyErr({message:"Failed to fetch"})} <button class="ghost" id="rdRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`; const rb=$("rdRetry"); if(rb) rb.onclick=scanTrust; return; }
+  RADAR_CACHE=res; try{ localStorage.setItem(rkey, JSON.stringify(res)); }catch(e){}
+  renderRadar(res);
 }
 function renderRadar(res){
   const body=$("radar-body"); if(!body) return;
@@ -689,7 +710,8 @@ async function showDetail(code){
     if((!price||!price.length) && (!info||!info.length)){
       view.innerHTML='<div class="status">查無此代碼資料，請確認股票代碼。</div>'; return; }
     renderDetail(code, info, price, per, rev, inst, hold, news);
-  }catch(e){ view.innerHTML='<div class="status">發生錯誤：'+e.message+'</div>'; }
+  }catch(e){ view.innerHTML='<div class="status">'+friendlyErr(e)+'<br><button class="ghost" id="dtRetry" style="margin-top:12px;padding:8px 16px">重試</button></div>';
+    const rb=$("dtRetry"); if(rb) rb.onclick=()=>showDetail(code); }
 }
 
 function renderDetail(code, info, price, per, rev, inst, hold, news){
