@@ -2,3 +2,16 @@
 .DS_Store
 _debug_*.html
 __pycache__/
+
+# 以下為此資料夾內「其他無關專案 / 含機敏資料」的檔案，
+# 本 repo 會發佈成公開網站，故一律排除，避免外洩。
+*.pem
+netlify/
+push/
+pmic-kb.html
+pmic-schema.sql
+poke-demo.html
+sync-video-demo.html
+sync-video-supabase.html
+sample-rev3-load-transient.csv
+sample-rev4-load-transient.csv
