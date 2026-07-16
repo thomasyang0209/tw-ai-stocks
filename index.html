@@ -750,29 +750,6 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     <div class="dd ${cls(lp.spread)}">${lp.spread>0?'▲':lp.spread<0?'▼':''} ${Math.abs(lp.spread??0).toFixed(2)}</div></div>`:"";
   const vcard=(l,v,cap)=>`<div class="card"><div class="lbl">${l}</div><div class="val">${v}</div><div class="cap">${cap}</div></div>`;
 
-  // 即時研判（依當日數據自動產生，每次開啟更新）
-  const pc=(price||[]).map(p=>p.close);
-  const pxChg = pc.length>21 ? (pc[pc.length-1]/pc[pc.length-22]-1)*100 : null;
-  let score=0;
-  if(tst.dir===1&&tst.days>=3) score++; else if(tst.dir===-1&&tst.days>=3) score--;
-  if(sf>0) score++; else if(sf<0) score--;
-  if(latestYoY>0) score++; else if(latestYoY!=null&&latestYoY<0) score--;
-  const verdict = score>=2?{t:"偏多",c:"pos"}:score<=-2?{t:"偏空",c:"neg"}:{t:"中性",c:""};
-  const facts=[
-    `投信：${tst.dir===1?"連買 "+tst.days+" 天":tst.dir===-1?"連賣 "+tst.days+" 天":"無連續買賣超"}（近 20 日 ${signed(Math.round(tcum20))} 張）`,
-    `外資：近 10 日合計 ${signed(Math.round(sf))} 張`,
-    latestYoY!=null?`營收：最新月 YoY ${signed(latestYoY.toFixed(1))}%`:null,
-    pv.PER!=null?`估值：本益比 ${num(pv.PER,1)} 倍`:null,
-    pxChg!=null?`股價：近一個月 ${signed(pxChg.toFixed(1))}%`:null,
-  ].filter(Boolean);
-  let caution="";
-  if(tst.dir===-1&&tst.days>=5) caution="⚠ 投信連賣，注意基金可能撤退。";
-  if(pv.PER>40 && pxChg>15) caution+=(caution?" ":"")+"估值偏高且近月漲多，追高留意。";
-  const briefHtml=`<div class="ai-box" style="margin-bottom:14px">
-    <h5>⚡ 即時研判 <span style="font-weight:400;color:var(--muted)">· 依當日數據自動產生</span> ｜ 綜合：<span class="${verdict.c}">${verdict.t}</span></h5>
-    <ul>${facts.map(f=>`<li>${f}</li>`).join("")}</ul>
-    ${caution?`<div class="flag warn" style="margin-top:6px">${caution}</div>`:""}</div>`;
-
   // 即時新聞（每次開啟自動更新，來源 FinMind）
   const seen={}; const nlist=(news||[]).filter(n=>{if(!n.link||seen[n.link])return false; seen[n.link]=1; return true;})
     .sort((a,b)=>a.date<b.date?1:-1).slice(0,7);
@@ -780,19 +757,67 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
   const liveNewsHtml = nlist.length
     ? `<ul class="news-list">${nlist.map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${cleanT(n.title,n.source)}</a><div class="src">${n.source} · ${n.date.slice(0,10)} ↗</div></li>`).join("")}</ul>`
     : `<p class="note">近期無即時新聞，可至 <a href="https://tw.stock.yahoo.com/quote/${code}.TW/news" target="_blank" rel="noopener" style="color:var(--accent)">Yahoo 股市</a> 查看。</p>`;
-
   const nw=NEWS[code];
+
+  // 三面交叉分析（新聞面 × 籌碼面 × 基本面，依當日數據自動產生）
+  const pc=(price||[]).map(p=>p.close);
+  const pxChg = pc.length>21 ? (pc[pc.length-1]/pc[pc.length-22]-1)*100 : null;
+  const hchg = hsorted.length>1 ? (hsorted[hsorted.length-1].ForeignInvestmentSharesRatio - hsorted[0].ForeignInvestmentSharesRatio) : null;
+  const dir=s=>s>0?{t:"偏多",c:"pos"}:s<0?{t:"偏空",c:"neg"}:{t:"中性",c:""};
+
+  // 籌碼面
+  let chipScore=0; const chipPts=[];
+  if(tst.dir===1&&tst.days>=3){chipScore++; chipPts.push(`投信連買 ${tst.days} 天`);}
+  else if(tst.dir===-1&&tst.days>=3){chipScore--; chipPts.push(`投信連賣 ${tst.days} 天`);}
+  chipPts.push(`投信近 20 日 ${signed(Math.round(tcum20))} 張`);
+  if(sf>0){chipScore++; chipPts.push(`外資近 10 日買超 ${signed(Math.round(sf))} 張`);}
+  else if(sf<0){chipScore--; chipPts.push(`外資近 10 日賣超 ${signed(Math.round(sf))} 張`);}
+  if(hchg!=null){ chipPts.push(`外資持股 ${hchg>=0?"+":""}${num(hchg,2)} pts`); if(hchg>0.3)chipScore++; else if(hchg<-0.3)chipScore--; }
+  const chipD=dir(chipScore);
+
+  // 基本面
+  let fundScore=0; const fundPts=[];
+  if(latestYoY!=null){ fundPts.push(`月營收 YoY ${signed(latestYoY.toFixed(1))}%`); if(latestYoY>10)fundScore++; else if(latestYoY<0)fundScore--; }
+  if(pv.PER!=null) fundPts.push(`本益比 ${num(pv.PER,1)} 倍`);
+  if(pv.dividend_yield!=null) fundPts.push(`殖利率 ${num(pv.dividend_yield,2)}%`);
+  if(pxChg!=null) fundPts.push(`近一月股價 ${signed(pxChg.toFixed(1))}%`);
+  const highVal = pv.PER!=null && pv.PER>40;
+  const fundD=dir(fundScore);
+
+  // 新聞面
+  const newsPts=[]; if(nw) newsPts.push(nw.sum.split(/[；。]/)[0]); newsPts.push(`近 7 日 ${nlist.length} 則即時新聞`);
+
+  const total=chipScore+fundScore;
+  const verdict = total>=2?{t:"偏多",c:"pos"}:total<=-2?{t:"偏空",c:"neg"}:{t:"中性",c:""};
+  let reason;
+  if(chipScore>0 && fundScore>0) reason=`籌碼面與基本面同向偏多——${nw?"新聞面有題材加持，":""}投信／外資買盤與營收成長形成共振，屬資金面與基本面雙重支撐。`;
+  else if(chipScore>0 && fundScore<=0) reason=`籌碼面偏多、但基本面${fundScore<0?"轉弱":"平淡"}${highVal?"且估值偏高":""}——目前較偏『資金與題材推動』，若基本面未跟上，追高風險較高。`;
+  else if(chipScore<0 && fundScore>0) reason=`基本面尚穩（營收成長）、但籌碼面轉弱——投信／外資調節，短線恐面臨賣壓或獲利了結，宜留意量能是否止穩。`;
+  else if(chipScore<0 && fundScore<0) reason=`籌碼面與基本面同步轉弱——法人調節加上營收／估值壓力，${nw?"即使題材仍在，":""}短線偏空、宜保守。`;
+  else reason=`三面訊號分歧或偏中性——${nw?"新聞面有題材，":""}籌碼面與基本面方向尚不一致，建議觀望、等訊號更同向再動作。`;
+  if(highVal) reason+="　另注意本益比偏高，股價已反映不少期待。";
+  if(tst.dir===-1&&tst.days>=5) reason+=`　且投信已連賣 ${tst.days} 天，留意基金撤退訊號。`;
+
+  const crossHtml=`<div class="ai-box" style="margin-bottom:14px">
+    <h5>🔀 三面交叉分析（新聞面 × 籌碼面 × 基本面）<span style="font-weight:400;color:var(--muted)"> · 依當日數據自動產生</span> ｜ 綜合：<span class="${verdict.c}">${verdict.t}</span></h5>
+    <ul>
+      <li><b>新聞面：</b>${newsPts.join("；")}</li>
+      <li><b>籌碼面（<span class="${chipD.c}">${chipD.t}</span>）：</b>${chipPts.join("、")}</li>
+      <li><b>基本面（<span class="${fundD.c}">${fundD.t}</span>）：</b>${fundPts.join("、")}</li>
+    </ul>
+    <div style="margin-top:8px;line-height:1.75"><b>綜合原因：</b>${reason}</div></div>`;
+
   const verifiedHtml = nw?`
       <div class="panel-h" style="margin-top:4px"><span class="t">深度分析（AI 查證大綱）</span><span class="meta">經網路查證 · 截至 ${AS_OF}</span></div>
       <p class="ai-sum">${nw.sum}</p>
       <div class="ai-grid">
         <div class="ai-box"><h5 class="drv">▲ 成長動能</h5><ul>${nw.drv.map(x=>`<li>${x}</li>`).join("")}</ul></div>
         <div class="ai-box"><h5 class="rsk">▼ 風險 / 觀察</h5><ul>${nw.rsk.map(x=>`<li>${x}</li>`).join("")}</ul></div>
-      </div>`:`<p class="note">此檔尚未內建深度查證分析；上方「即時研判」與下方「即時新聞」每次開啟皆自動更新。</p>`;
+      </div>`:`<p class="note">此檔尚未內建深度查證分析；上方「三面交叉分析」與下方「即時新聞」每次開啟皆自動更新。</p>`;
 
   const aiHtml=`<div class="panel">
       <div class="panel-h"><span class="t">新聞 / AI 分析</span></div>
-      ${briefHtml}
+      ${crossHtml}
       ${verifiedHtml}
       <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞</span><span class="meta">每次開啟自動更新 · 來源 FinMind</span></div>
       ${liveNewsHtml}
