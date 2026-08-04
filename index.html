@@ -742,7 +742,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
 
   // 投信動向
   const tser=trustSeries(inst); const tst=streak(tser); const tcum20=cumN(tser,20);
-  const tlast=tser.slice(-25); let run=0; const trun=tlast.map(x=>{run+=x.net; return run;});
+  const tlast=tser.slice(-25); const tprice=tlast.map(x=>pmap[x.date]??null);
   let sBig, sLbl, sCls, sFlag="";
   if(tst.dir===1){ sBig=`${tst.days}<small> 天</small>`; sLbl="投信連續買超"; sCls="pos";
     if(tst.days>=5) sFlag=`<div class="flag hot">🔥 投信連買 ${tst.days} 天，資金持續流入</div>`;
@@ -750,16 +750,16 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     if(tst.days>=5) sFlag=`<div class="flag warn">⚠ 投信連賣 ${tst.days} 天，注意基金可能撤退；若股價已大漲更要警覺</div>`;
   }else{ sBig="—"; sLbl="投信近日無連續買賣超"; sCls=""; }
   const trustHtml=`<div class="panel">
-    <div class="panel-h"><span class="t">投信動向 ⭐<span class="tag live">即時</span></span><span class="meta">近 ${tser.length} 個交易日</span></div>
+    <div class="panel-h"><span class="t">投信買賣超 vs 股價 ⭐<span class="tag live">即時</span></span><span class="meta">近 ${tlast.length} 個交易日</span></div>
     <div class="streak">
       <div><div class="lbl">${sLbl}</div><div class="big ${sCls}">${sBig}</div></div>
       <div><div class="lbl">近 20 日投信累積買賣超</div><div class="big ${cls(tcum20)}">${signed(Math.round(tcum20))}<small> 張</small></div></div>
     </div>
     ${sFlag}
-    ${tlast.length?comboChart(tlast.map(x=>mdLabel(x.date)), tlast.map(x=>x.net), trun,
+    ${tlast.length?comboChart(tlast.map(x=>mdLabel(x.date)), tlast.map(x=>x.net), tprice,
       {barColor:v=>v>=0?"var(--f-trust)":"var(--down)", barTip:v=>signed(Math.round(v))+" 張",
-       rightFmt:p=>num(p), lineTip:v=>"累積 "+signed(Math.round(v))+" 張"}):""}
-    <div class="legend"><span><i style="background:var(--f-trust)"></i>投信單日淨買賣（張）</span><span><span class="li"></span>區間累積買賣超</span></div>
+       rightFmt:p=>num(p,p<50?1:0), lineTip:v=>"股價 "+num(v,2)+" 元"}):""}
+    <div class="legend"><span><i style="background:var(--f-trust)"></i>投信單日淨買賣（張・左軸）</span><span><span class="li"></span>股價收盤（元・右軸）</span></div>
   </div>`;
 
   // 外資持股比例（免費資料僅有外資，非投信）
