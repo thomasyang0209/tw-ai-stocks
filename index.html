@@ -115,6 +115,22 @@
   .mtile .l{font-size:11.5px; color:var(--muted)}
   .mtile .v{font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:3px}
   .mtile .u{font-size:11px; color:var(--muted)}
+  /* 族群輪動 */
+  .rotation{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px}
+  .rotation .mh{font-size:13px; font-weight:700; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px}
+  .rotation .mh .dt{color:var(--muted); font-weight:400; font-size:12px}
+  .rotation table{margin-top:5px}
+  .rotation tbody tr:first-child{background:rgba(79,157,255,.08)}
+  .rotation .rank{width:34px; color:var(--muted); text-align:center}
+  .rotation .sector-name{text-align:left; font-weight:700}
+  .rotation .sector-name small{display:block; color:var(--muted); font-weight:400; font-size:10.5px; margin-top:3px}
+  .signal{display:inline-block; min-width:44px; text-align:center; padding:3px 8px; border-radius:7px; font-size:11px; font-weight:700}
+  .signal.lead{background:rgba(239,77,90,.15); color:var(--up)}
+  .signal.turn{background:rgba(79,157,255,.15); color:var(--accent)}
+  .signal.hold{background:rgba(192,124,255,.14); color:var(--f-trust)}
+  .signal.rest{background:rgba(240,136,62,.14); color:var(--f-dealer)}
+  .signal.weak{background:rgba(38,162,105,.15); color:var(--down)}
+  .rotation-summary{font-size:13px; line-height:1.6; margin:8px 2px 2px}
   /* 投信雷達 */
   .radar{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px}
   .radar-btn{background:var(--accent); color:#fff; border:0; font-size:14px; font-weight:600; padding:10px 18px; border-radius:10px; cursor:pointer}
@@ -201,6 +217,18 @@ const SECTORS=[
     ["2408","南亞科"],["2344","華邦電"],["2337","旺宏"],["3006","晶豪科"],["4967","十銓"]]},
   {name:"AI 基建 (電源 / 機構)", d:"高功率電源、機櫃機殼與重電", stocks:[
     ["2308","台達電"],["2301","光寶科"],["6412","群電"],["8210","勤誠"],["3013","晟銘電"]]},
+];
+
+/* 族群輪動採代表股等權平均，避免單一大型權值股完全主導結果 */
+const ROTATION_GROUPS=[
+  {name:"PCB／ABF", stocks:[["3037","欣興"],["8046","南電"],["2383","台光電"],["2368","金像電"]]},
+  {name:"AI Server", stocks:[["2317","鴻海"],["2382","廣達"],["3231","緯創"],["6669","緯穎"]]},
+  {name:"散熱", stocks:[["3017","奇鋐"],["3324","雙鴻"],["3653","健策"],["2421","建準"]]},
+  {name:"ASIC", stocks:[["3661","世芯-KY"],["3443","創意"],["3035","智原"],["3529","力旺"]]},
+  {name:"記憶體", stocks:[["2408","南亞科"],["2344","華邦電"],["2337","旺宏"],["8299","群聯"]]},
+  {name:"封測", stocks:[["3711","日月光投控"],["6239","力成"],["2449","京元電子"],["6257","矽格"]]},
+  {name:"電源", stocks:[["2308","台達電"],["2301","光寶科"],["6412","群電"]]},
+  {name:"網通／CPO", stocks:[["2345","智邦"],["4979","華星光"],["3081","聯亞"],["3163","波若威"]]},
 ];
 
 /* ============ 經查證的新聞與 AI 分析（快照 2026-07-15）============ */
@@ -718,6 +746,64 @@ function renderRadar(res){
   body.querySelectorAll(".rrow").forEach(r=>r.onclick=()=>showDetail(r.dataset.c));
 }
 
+/* ============ AI 族群輪動排行 ============ */
+const ROTATION_TTL=2*60*60*1000;
+const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null;
+function rotationSignal(r){
+  if(r.d1>=2 && r.d5>0) return {t:"領先",c:"lead"};
+  if(r.d1>0 && r.d5<=0) return {t:"轉強",c:"turn"};
+  if(r.d1>=0 && r.d5>0) return {t:"偏強",c:"hold"};
+  if(r.d1<0 && r.d5>0) return {t:"整理",c:"rest"};
+  return {t:"轉弱",c:"weak"};
+}
+function stockReturns(price){
+  const rows=recentTradingDays(price,40); const n=rows.length;
+  const ret=lag=>n>lag && rows[n-1-lag].close ? (rows[n-1].close/rows[n-1-lag].close-1)*100 : null;
+  return {date:n?rows[n-1].date:"", d1:ret(1), d5:ret(5), d20:ret(20)};
+}
+async function loadRotation(force=false){
+  const body=$("rotation-body"), meta=$("rotation-date"); if(!body) return;
+  const key="sector-rotation-v1";
+  if(!force){
+    try{const c=JSON.parse(localStorage.getItem(key)||"null");
+      if(c && Date.now()-c.t<ROTATION_TTL){renderRotation(c.rows,c.date);return;}}
+    catch(e){}
+  }
+  body.innerHTML='<div class="note">計算 8 個 AI 族群中…</div>';
+  const unique=[...new Set(ROTATION_GROUPS.flatMap(g=>g.stocks.map(s=>s[0])))];
+  const pm=new Map();
+  for(let i=0;i<unique.length;i+=5){
+    const part=unique.slice(i,i+5);
+    await Promise.all(part.map(async c=>{try{pm.set(c,await fj("TaiwanStockPrice",c,monthsAgo(2)));}catch(e){pm.set(c,[]);}}));
+    if(body) body.innerHTML=`<div class="note">計算 8 個 AI 族群中… ${Math.min(i+5,unique.length)} / ${unique.length}</div>`;
+  }
+  const rows=ROTATION_GROUPS.map(g=>{
+    const sr=g.stocks.map(([c,n])=>({c,n,...stockReturns(pm.get(c)||[])}));
+    const valid=k=>sr.map(x=>x[k]).filter(Number.isFinite);
+    return {name:g.name,d1:avg(valid("d1")),d5:avg(valid("d5")),d20:avg(valid("d20")),
+      count:valid("d1").length, leaders:sr.filter(x=>Number.isFinite(x.d1)).sort((a,b)=>b.d1-a.d1).slice(0,2),
+      date:sr.map(x=>x.date).sort().pop()||""};
+  }).filter(r=>r.count).sort((a,b)=>b.d1-a.d1);
+  if(!rows.length){body.innerHTML=`<div class="note">族群資料暫時無法讀取。<button class="ghost" id="rotRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`;
+    const rb=$("rotRetry"); if(rb) rb.onclick=()=>loadRotation(true); return;}
+  const date=rows.map(r=>r.date).sort().pop();
+  try{localStorage.setItem(key,JSON.stringify({t:Date.now(),date,rows}));}catch(e){}
+  renderRotation(rows,date);
+}
+function renderRotation(rows,date){
+  const body=$("rotation-body"), meta=$("rotation-date"); if(!body)return;
+  if(meta) meta.textContent=`資料日 ${date||"—"} · 代表股等權平均`;
+  const pct=v=>Number.isFinite(v)?`<span class="${cls(v)}">${v>0?"+":""}${v.toFixed(2)}%</span>`:"—";
+  const table=rows.map((r,i)=>{const sig=rotationSignal(r); const leaders=r.leaders.map(x=>x.n).join("、");
+    return `<tr><td class="rank">${i+1}</td><td class="sector-name">${r.name}<small>${leaders}</small></td>
+      <td>${pct(r.d1)}</td><td>${pct(r.d5)}</td><td>${pct(r.d20)}</td><td><span class="signal ${sig.c}">${sig.t}</span></td></tr>`;}).join("");
+  const top=rows[0], rising=rows.find(r=>rotationSignal(r).t==="轉強");
+  body.innerHTML=`<div class="tablewrap"><table><thead><tr><th class="rank">#</th><th style="text-align:left">族群</th><th>今日</th><th>5日</th><th>20日</th><th>狀態</th></tr></thead><tbody>${table}</tbody></table></div>
+    <div class="rotation-summary">今日領先為 <b>${top.name}</b>（${top.d1>0?"+":""}${top.d1.toFixed(2)}%）${rising?`；<b>${rising.name}</b> 出現短線轉強。`:"。"}</div>
+    <div class="note">以各族群代表股收盤價等權平均計算，適合觀察相對強弱，不代表整個產業指數或投資建議。<button class="ghost" id="rotRefresh" style="margin-left:8px;padding:4px 10px">重新計算</button></div>`;
+  const rb=$("rotRefresh"); if(rb) rb.onclick=()=>loadRotation(true);
+}
+
 /* ============ 分類首頁 ============ */
 function renderHome(){
   codeEl.style.display="";
@@ -733,6 +819,10 @@ function renderHome(){
       </div>
       <ul class="news-list">${MARKET.items.map(it=>`<li><a href="${it.u}" target="_blank" rel="noopener">${it.t}</a><div class="src">${it.s} ↗</div></li>`).join("")}</ul>
     </div>
+    <div class="rotation">
+      <div class="mh" style="margin-bottom:8px"><span>AI 族群輪動排行<span class="tag live">即時</span></span><span class="dt" id="rotation-date">載入中…</span></div>
+      <div id="rotation-body"><div class="note">載入中…</div></div>
+    </div>
     <div class="radar"><div class="mh" style="margin-bottom:10px"><span>AI 類股投信雷達</span></div>
       <div id="radar-body"><button class="radar-btn" id="radar-go">🔍 掃描 AI 類股投信動向（連買天數・累積買超）</button>
       <div class="note">掃描約 ${aiUniverse().length} 檔 AI 類股的投信買賣，找出連買天數最長與近20日買超最多者。</div></div></div>
@@ -746,6 +836,7 @@ function renderHome(){
   const rg=$("radar-go"); if(rg) rg.onclick=scanTrust;
   if(RADAR_CACHE) renderRadar(RADAR_CACHE);
   loadMarket();
+  loadRotation();
 }
 
 /* ============ 個股詳細 ============ */
