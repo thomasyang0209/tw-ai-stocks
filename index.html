@@ -78,6 +78,18 @@
   tbody tr{border-top:1px solid var(--line)}
   td.date{color:var(--muted); font-size:13px}
   .pos{color:var(--up)} .neg{color:var(--down)}
+  .flat{color:var(--muted)}
+  .price-heatmap{display:grid; grid-template-columns:repeat(10,minmax(0,1fr)); gap:7px; margin:12px 0 16px}
+  @media(max-width:760px){.price-heatmap{grid-template-columns:repeat(5,minmax(0,1fr))}}
+  @media(max-width:420px){.price-heatmap{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .heat-cell{border:1px solid var(--line); border-radius:10px; min-height:76px; padding:9px 8px; display:flex; flex-direction:column; justify-content:space-between; text-align:center}
+  .heat-cell.up{background:rgba(239,77,90,.18); border-color:rgba(239,77,90,.38)}
+  .heat-cell.down{background:rgba(38,162,105,.18); border-color:rgba(38,162,105,.38)}
+  .heat-cell.even{background:var(--panel2)}
+  .heat-date{font-size:11px; color:var(--muted)}
+  .heat-close{font-size:15px; font-weight:750; margin:4px 0; font-variant-numeric:tabular-nums}
+  .heat-return{font-size:12px; font-weight:700; font-variant-numeric:tabular-nums}
+  .price-table td:nth-child(2),.price-table td:nth-child(3){font-weight:650}
   /* 新聞 / AI 分析 */
   .ai-sum{font-size:14px; line-height:1.75; margin:2px 2px 14px}
   .ai-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px}
@@ -550,6 +562,49 @@ const signed=n=>(n>0?"+":"")+num(n);
 const cls=n=>n>0?"pos":(n<0?"neg":"");
 const mdLabel=s=>s.slice(5).replace("-","/");
 
+/* 最近 20 個交易日：依日期排序、去除重複日期，並以相鄰交易日收盤價計算單日漲跌幅 */
+function recentTradingDays(price, count=20){
+  const byDate=new Map();
+  (price||[]).forEach(r=>{
+    const close=Number(r.close);
+    if(r.date && Number.isFinite(close)) byDate.set(r.date,{...r,close});
+  });
+  const rows=[...byDate.values()].sort((a,b)=>a.date.localeCompare(b.date));
+  return rows.map((r,i)=>({
+    ...r,
+    dailyReturn:i>0 && rows[i-1].close!==0 ? (r.close/rows[i-1].close-1)*100 : null
+  })).slice(-count);
+}
+function returnText(v){
+  if(v==null || !Number.isFinite(v)) return "—";
+  if(Math.abs(v)<0.005) return "0.00%";
+  return `${v>0?"+":""}${v.toFixed(2)}%`;
+}
+function priceHistory20Html(price){
+  const rows=recentTradingDays(price,20);
+  if(!rows.length) return '<div class="note">無股價資料</div>';
+  const heat=rows.map(r=>{
+    const state=r.dailyReturn>0?"up":r.dailyReturn<0?"down":"even";
+    const colorClass=r.dailyReturn>0?"pos":r.dailyReturn<0?"neg":"flat";
+    return `<div class="heat-cell ${state}" title="${r.date}｜收盤 ${num(r.close,2)}｜${returnText(r.dailyReturn)}">
+      <span class="heat-date">${mdLabel(r.date)}</span>
+      <span class="heat-close">${num(r.close,2)}</span>
+      <span class="heat-return ${colorClass}">${returnText(r.dailyReturn)}</span>
+    </div>`;
+  }).join("");
+  const table=rows.slice().reverse().map(r=>`<tr>
+    <td class="date">${r.date}</td>
+    <td>${num(r.close,2)}</td>
+    <td class="${r.dailyReturn>0?"pos":r.dailyReturn<0?"neg":"flat"}">${returnText(r.dailyReturn)}</td>
+  </tr>`).join("");
+  return `<div class="price-heatmap" aria-label="最近 20 個交易日漲跌熱力圖">${heat}</div>
+    <div class="legend"><span><i style="background:var(--up)"></i>上漲</span><span><i style="background:var(--down)"></i>下跌</span><span><i style="background:var(--muted)"></i>平盤</span></div>
+    <div class="tablewrap" style="margin-top:12px"><table class="price-table">
+      <thead><tr><th>交易日期</th><th>收盤價（元）</th><th>單日漲跌幅</th></tr></thead>
+      <tbody>${table}</tbody>
+    </table></div>`;
+}
+
 /* ============ 通用圖表 ============ */
 // 面積折線（股價）
 function areaChart(dates, vals){
@@ -867,6 +922,12 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     </div>
 
     ${trustHtml}
+
+    <div class="panel">
+      <div class="panel-h"><span class="t">最近 20 個交易日<span class="tag live">即時</span></span><span class="meta">日期 · 收盤價 · 單日漲跌幅</span></div>
+      ${priceHistory20Html(price)}
+      <div class="note">依 FinMind 每日收盤價計算；單日漲跌幅＝（當日收盤價 ÷ 前一交易日收盤價 − 1）× 100%。熱力圖由左至右、由上至下為舊到新。</div>
+    </div>
 
     ${aiHtml}
 
