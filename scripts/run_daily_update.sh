@@ -1,16 +1,18 @@
 #!/bin/zsh
 set -u
 
-PROJECT_DIR="/Users/yangchihsesh/Desktop/claude"
+PROJECT_DIR="${0:A:h:h}"
 PYTHON_BIN="/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
 GIT_BIN="/usr/bin/git"
 
 cd "$PROJECT_DIR" || exit 1
 
-# 有其他人工修改時不拉遠端，避免覆蓋使用者內容；更新程式只會改 MARKET 區塊。
-if [[ -z "$($GIT_BIN status --porcelain)" ]]; then
-  $GIT_BIN pull --ff-only origin main || true
+# 此腳本在專用自動化 clone 執行；工作區異常時停止，不覆蓋任何內容。
+if [[ -n "$($GIT_BIN status --porcelain)" ]]; then
+  print -u2 "自動化工作區不乾淨，停止更新"
+  exit 1
 fi
+$GIT_BIN pull --ff-only origin main || exit 1
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="$(command -v python3)"
