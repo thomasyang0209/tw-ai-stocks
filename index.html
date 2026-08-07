@@ -115,6 +115,14 @@
   .mtile .l{font-size:11.5px; color:var(--muted)}
   .mtile .v{font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:3px}
   .mtile .u{font-size:11px; color:var(--muted)}
+  .sentiment{margin-top:12px; padding:12px 13px; background:var(--panel2); border:1px solid var(--line); border-radius:11px}
+  .sentiment-top{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px}
+  .sentiment-title{font-size:12px; color:var(--muted)}
+  .sentiment-label{font-size:18px; font-weight:800}
+  .sentiment-score{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .sentiment-bar{height:9px; border-radius:999px; background:linear-gradient(90deg,var(--down),#d3a72e,var(--up)); position:relative}
+  .sentiment-dot{position:absolute; top:50%; width:15px; height:15px; border:3px solid var(--panel); border-radius:50%; background:#fff; transform:translate(-50%,-50%); box-shadow:0 1px 5px rgba(0,0,0,.35)}
+  .sentiment-factors{display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:9px; color:var(--muted); font-size:11.5px}
   /* 族群輪動 */
   .rotation{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px}
   .rotation .mh{font-size:13px; font-weight:700; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px}
@@ -819,25 +827,46 @@ function comboChart(labels, bars, line, opt){
 async function loadMarket(){
   const box=$("market"); if(!box) return;
   try{
-    const [tot, fut] = await Promise.all([
+    const [tot, fut, taiex] = await Promise.all([
       fj("TaiwanStockTotalInstitutionalInvestors", null, daysAgo(8)),
       fj("TaiwanFuturesInstitutionalInvestors", "TX", daysAgo(8)).catch(()=>[]),
+      fj("TaiwanStockPrice", "TAIEX", daysAgo(12)).catch(()=>[]),
     ]);
     const dts=[...new Set(tot.map(r=>r.date))].sort(); const day=dts[dts.length-1];
     let f=0,t=0,d=0; tot.filter(r=>r.date===day).forEach(r=>{const net=(r.buy-r.sell)/1e8;
       if(/Foreign/.test(r.name)) f+=net; else if(r.name==="Investment_Trust") t+=net; else d+=net;});
-    let futHtml=`<div class="mtile"><div class="l">台指期外資</div><div class="v">–</div><div class="u">未平倉</div></div>`;
+    let oi=null, futHtml=`<div class="mtile"><div class="l">台指期外資</div><div class="v">–</div><div class="u">未平倉</div></div>`;
     if(fut&&fut.length){
       const fd=[...new Set(fut.map(r=>r.date))].sort(); const fday=fd[fd.length-1];
       const fx=fut.find(r=>r.date===fday && r.institutional_investors==="外資");
-      if(fx){const oi=(fx.long_open_interest_balance_volume||0)-(fx.short_open_interest_balance_volume||0);
+      if(fx){oi=(fx.long_open_interest_balance_volume||0)-(fx.short_open_interest_balance_volume||0);
         futHtml=`<div class="mtile"><div class="l">台指期外資</div><div class="v ${cls(oi)}">${oi>0?'淨多 ':'淨空 '}${num(Math.abs(oi))}</div><div class="u">未平倉口數</div></div>`;}
     }
     const tile=(l,v)=>`<div class="mtile"><div class="l">${l}（現貨）</div><div class="v ${cls(v)}">${signed(v.toFixed(1))}</div><div class="u">億元</div></div>`;
     box.querySelector(".dt").textContent=day;
     box.querySelector(".mtiles").innerHTML=tile("外資",f)+tile("投信",t)+tile("自營商",d)+futHtml;
+    const tr=recentTradingDays(taiex,2), idx=tr.length>1?(tr[1].close/tr[0].close-1)*100:null;
+    MARKET_MOOD={...MARKET_MOOD,index:idx,flow:f+t+d,futures:oi,date:day}; renderMarketMood();
   }catch(e){ box.querySelector(".mtiles").innerHTML=`<div class="note">${friendlyErr(e)} <button class="ghost" id="mkRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`;
     const rb=$("mkRetry"); if(rb) rb.onclick=loadMarket; }
+}
+
+/* ============ 市場情緒（0 恐慌－100 貪婪） ============ */
+let MARKET_MOOD={index:null,flow:null,futures:null,rotation:null,date:""};
+const bounded=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function renderMarketMood(){
+  const box=$("sentiment"); if(!box)return;
+  const m=MARKET_MOOD, parts=[]; let score=50;
+  if(Number.isFinite(m.index)){score+=bounded(m.index/2.5,-1,1)*25;parts.push(`大盤 ${signed(m.index.toFixed(2))}%`);}
+  if(Number.isFinite(m.flow)){score+=bounded(m.flow/500,-1,1)*15;parts.push(`法人 ${m.flow>=0?'買超':'賣超'} ${num(Math.abs(m.flow),1)} 億`);}
+  if(Number.isFinite(m.futures)){score+=bounded(m.futures/100000,-1,1)*10;parts.push(`外資期貨淨${m.futures>=0?'多':'空'} ${num(Math.abs(m.futures))} 口`);}
+  if(Number.isFinite(m.rotation)){score+=(m.rotation-.5)*20;parts.push(`AI 族群上漲 ${Math.round(m.rotation*100)}%`);}
+  score=Math.round(bounded(score,0,100));
+  const mood=score<20?"極度恐慌":score<40?"恐慌":score<60?"中性":score<80?"偏樂觀":"極度樂觀";
+  const color=score<40?"var(--down)":score<60?"#d3a72e":"var(--up)";
+  box.innerHTML=`<div class="sentiment-top"><div><div class="sentiment-title">市場情緒</div><div class="sentiment-label" style="color:${color}">${mood}</div></div><div class="sentiment-score">${score} / 100${m.date?` · ${m.date}`:""}</div></div>
+    <div class="sentiment-bar"><span class="sentiment-dot" style="left:${score}%"></span></div>
+    <div class="sentiment-factors">${parts.map(x=>`<span>${x}</span>`).join("")}<span>依行情、法人、期貨與族群廣度量化</span></div>`;
 }
 
 /* ============ AI 類股投信雷達 ============ */
@@ -928,6 +957,7 @@ async function loadRotation(force=false){
   renderRotation(rows,date);
 }
 function renderRotation(rows,date){
+  MARKET_MOOD={...MARKET_MOOD,rotation:rows.filter(r=>r.d1>0).length/rows.length,date:date||MARKET_MOOD.date}; renderMarketMood();
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body)return;
   if(meta) meta.textContent=`資料日 ${date||"—"} · 代表股等權平均`;
   const pct=v=>Number.isFinite(v)?`<span class="${cls(v)}">${v>0?"+":""}${v.toFixed(2)}%</span>`:"—";
@@ -947,7 +977,7 @@ function renderHome(){
   view.innerHTML=`
     ${watchlistHtml()}
     <div class="market" id="market"><div class="mh"><span>大盤風向 · 三大法人與台指期<span class="tag live">即時</span></span><span class="dt">載入中…</span></div>
-      <div class="mtiles"><div class="note">載入中…</div></div></div>
+      <div class="mtiles"><div class="note">載入中…</div></div><div class="sentiment" id="sentiment"><div class="note">市場情緒計算中…</div></div></div>
     <div class="panel">
       <div class="panel-h"><span class="t">每日大盤分析<span class="tag daily">每日</span></span><span class="meta">客觀中立 · 經查證 · 截至 ${MARKET.asOf}</span></div>
       <p class="ai-sum">${MARKET.summary}</p>
