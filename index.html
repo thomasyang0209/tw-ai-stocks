@@ -159,6 +159,9 @@
   .score-fact{font-size:11.5px; padding:5px 8px; border-radius:7px; background:var(--panel2); border:1px solid var(--line)}
   .sell-alert{margin-top:11px; padding:10px 12px; border-radius:9px; background:var(--panel2); border-left:4px solid var(--accent); font-size:13px; line-height:1.65}
   .sell-alert.warn{border-left-color:var(--f-dealer)} .sell-alert.danger{border-left-color:var(--up)}
+  .accuracy{display:flex; align-items:center; gap:12px; margin-top:11px; padding:10px 12px; border-radius:9px; background:var(--panel2); border:1px solid var(--line)}
+  .accuracy-rate{font-size:26px; font-weight:850; color:var(--accent); font-variant-numeric:tabular-nums}
+  .accuracy-copy{font-size:12px; line-height:1.55; color:var(--muted)}
   @media(max-width:560px){.score-overview{grid-template-columns:1fr}}
   @media(max-width:720px){.candidate-grid{grid-template-columns:1fr}}
   /* 我的關注清單 */
@@ -973,12 +976,22 @@ function stockGroup(code){
   const sec=SECTORS.find(g=>g.stocks.some(x=>x[0]===code));return sec?.name||"其他";
 }
 function setupAt(code,name,price,inst,offset=0){
-  const rows=recentTradingDays(price,70), target=rows.at(-(offset+1));if(!target)return null;
+  const rows=recentTradingDays(price,260), target=rows.at(-(offset+1));if(!target)return null;
   const p=(price||[]).filter(x=>x.date<=target.date), ii=(inst||[]).filter(x=>x.date<=target.date);
-  const flow=foreignCapitalFlow(ii,p);return stockSetup(code,name,stockGroup(code),flow,p);
+  const flow=foreignCapitalFlow(ii,p);if((flow.daily||[]).length<5)return null;return stockSetup(code,name,stockGroup(code),flow,p);
+}
+function predictionAccuracy(code,name,price,inst){
+  const rows=recentTradingDays(price,260);let correct=0,total=0,bull=0,bear=0;
+  for(let i=20;i<rows.length-10;i++){
+    const setup=setupAt(code,name,price,inst,rows.length-1-i);if(!setup)continue;
+    const prediction=setup.score>=3?1:setup.score<=0?-1:0;if(!prediction)continue;
+    const actual=rows[i+10].close-rows[i].close;if(actual===0)continue;
+    total++;if(prediction>0)bull++;else bear++;if(Math.sign(actual)===prediction)correct++;
+  }
+  return {correct,total,bull,bear,rate:total?correct/total*100:null};
 }
 function stockScoreHtml(code,name,price,inst){
-  const now=setupAt(code,name,price,inst,0), prev=setupAt(code,name,price,inst,1);
+  const now=setupAt(code,name,price,inst,0), prev=setupAt(code,name,price,inst,1), acc=predictionAccuracy(code,name,price,inst);
   if(!now)return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分</span></div><div class="note">資料不足，暫時無法評分。</div></div>`;
   const delta=prev?now.score-prev.score:null, deltaText=delta==null?"前日無資料":delta===0?"與前一交易日相同":`較前一交易日 ${delta>0?'+':''}${delta} 分`;
   const facts=[
@@ -999,8 +1012,9 @@ function stockScoreHtml(code,name,price,inst){
   return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分<span class="tag live">即時</span></span><span class="meta">${esc(now.group)} · 研究用</span></div>
     <div class="score-overview"><div><div class="score-number">${now.score}<small> / 7 分</small></div><div class="score-delta ${delta>0?'pos':delta<0?'neg':''}">${deltaText}</div></div>
     <div class="score-facts">${facts.map(x=>`<span class="score-fact ${x.ok?'pos':'neg'}">${x.t}</span>`).join("")}</div></div>
+    <div class="accuracy"><div class="accuracy-rate">${acc.rate==null?'—':acc.rate.toFixed(0)+'%'}</div><div class="accuracy-copy"><b>歷史10日方向精準率</b><br>${acc.total?`命中 ${acc.correct} / ${acc.total} 次 · 偏多樣本 ${acc.bull} · 偏空樣本 ${acc.bear}`:"有效歷史樣本不足"}</div></div>
     <div class="sell-alert ${alert.c}"><b>${alert.t}</b>${reasons.length?`<br>觸發原因：${reasons.join("、")}`:"<br>仍需配合個人持有成本、支撐位置與風險承受度。"}</div>
-    <div class="note">評分降低不等於自動賣出；連續下降且同時出現外資連賣、跌破月線／前低或放量下跌時，警示可靠度較高。</div></div>`;
+    <div class="note">精準率算法：歷史上分數 ≥3 預測未來10個交易日上漲，分數 ≤0 預測下跌；1～2分視為中性、不計入。命中次數 ÷ 有效預測次數即為精準率。每日滾動樣本彼此重疊，未計交易成本，僅供研究。評分降低不等於自動賣出。</div></div>`;
 }
 async function loadRotation(force=false){
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body) return;
