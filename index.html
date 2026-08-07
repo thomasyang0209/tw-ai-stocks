@@ -143,6 +143,15 @@
   .signal.rest{background:rgba(240,136,62,.14); color:var(--f-dealer)}
   .signal.weak{background:rgba(38,162,105,.15); color:var(--down)}
   .rotation-summary{font-size:13px; line-height:1.6; margin:8px 2px 2px}
+  .candidate-title{font-size:13px; font-weight:750; margin:15px 2px 8px}
+  .candidate-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px}
+  .candidate{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 11px; cursor:pointer}
+  .candidate:hover{border-color:var(--accent)}
+  .candidate-head{display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:13px; font-weight:750}
+  .candidate-head small{color:var(--muted); font-weight:400}
+  .candidate-grade{font-size:11px; padding:3px 7px; border-radius:7px; background:rgba(79,157,255,.13); color:var(--accent)}
+  .candidate-facts{display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:7px; color:var(--muted); font-size:11.5px}
+  @media(max-width:720px){.candidate-grid{grid-template-columns:1fr}}
   /* 我的關注清單 */
   .watchlist{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:15px 16px; margin-bottom:16px}
   .watch-form{display:grid; grid-template-columns:minmax(150px,1fr) 170px auto; gap:9px; margin:11px 0 10px}
@@ -935,12 +944,24 @@ function foreignCapitalFlow(inst,price){
   return {date:dates.at(-1)||"",d1:vals.length?vals.at(-1):null,d5:vals.length?total(5):null,d20:vals.length?total(20):null,
     daily:dates.slice(-20).map(d=>({date:d,value:daily[d]}))};
 }
+function stockSetup(code,name,group,flow,price){
+  const rows=recentTradingDays(price,65), last=rows.at(-1), closes=rows.map(x=>x.close);
+  const ma20=closes.length>=20?closes.slice(-20).reduce((s,v)=>s+v,0)/20:null;
+  const prev20=closes.slice(-21,-1), breakout=!!last&&prev20.length>=20&&last.close>Math.max(...prev20);
+  const vols=rows.map(x=>Number(x.Trading_Volume)||0), prevVol=vols.slice(-6,-1), volAvg=prevVol.length?prevVol.reduce((s,v)=>s+v,0)/prevVol.length:0;
+  const volRatio=last&&volAvg?vols.at(-1)/volAvg:null, fd=flow.daily||[];
+  let streak=0,dir=0;if(fd.length&&fd.at(-1).value!==0){dir=Math.sign(fd.at(-1).value);for(let i=fd.length-1;i>=0&&Math.sign(fd[i].value)===dir;i--)streak++;}
+  const above=ma20!=null&&last?last.close>=ma20:false;
+  let score=(dir>0&&streak>=3?2:dir>0?1:0)+(flow.d5>0?1:0)+(above?1:0)+(breakout?2:0)+(volRatio>=1.2?1:0)-(flow.d1<0?1:0);
+  const grade=score>=5?"籌碼技術同向":score>=3?"等待突破確認":"訊號不足";
+  return {code,name,group,d1:flow.d1,d5:flow.d5,streak,dir,above,breakout,volRatio,score,grade};
+}
 async function loadRotation(force=false){
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body) return;
-  const key="foreign-sector-rotation-v2";
+  const key="foreign-sector-rotation-v3";
   if(!force){
     try{const c=JSON.parse(localStorage.getItem(key)||"null");
-      if(c && Date.now()-c.t<ROTATION_TTL){renderRotation(c.rows,c.date);return;}}
+      if(c && Date.now()-c.t<ROTATION_TTL){renderRotation(c.rows,c.date,c.candidates||[]);return;}}
     catch(e){}
   }
   body.innerHTML='<div class="note">計算 8 個 AI 族群外資資金流中…</div>';
@@ -954,8 +975,10 @@ async function loadRotation(force=false){
     ]);pm.set(c,p);im.set(c,inst);}));
     if(body) body.innerHTML=`<div class="note">計算 8 個 AI 族群外資資金流中… ${Math.min(i+5,unique.length)} / ${unique.length}</div>`;
   }
+  const candidates=[];
   const rows=ROTATION_GROUPS.map(g=>{
-    const sr=g.stocks.map(([c,n])=>({c,n,...foreignCapitalFlow(im.get(c)||[],pm.get(c)||[])}));
+    const sr=g.stocks.map(([c,n])=>{const flow=foreignCapitalFlow(im.get(c)||[],pm.get(c)||[]);
+      const setup=stockSetup(c,n,g.name,flow,pm.get(c)||[]);candidates.push(setup);return {c,n,...flow,setup};});
     const dm={};sr.forEach(x=>(x.daily||[]).forEach(v=>dm[v.date]=(dm[v.date]||0)+v.value));
     const dates=Object.keys(dm).sort(), flow=dates.map(d=>({date:d,value:dm[d]}));
     const total=n=>flow.slice(-n).reduce((s,x)=>s+x.value,0);
@@ -966,10 +989,10 @@ async function loadRotation(force=false){
   if(!rows.length){body.innerHTML=`<div class="note">族群資料暫時無法讀取。<button class="ghost" id="rotRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`;
     const rb=$("rotRetry"); if(rb) rb.onclick=()=>loadRotation(true); return;}
   const date=rows.map(r=>r.date).sort().pop();
-  try{localStorage.setItem(key,JSON.stringify({t:Date.now(),date,rows}));}catch(e){}
-  renderRotation(rows,date);
+  try{localStorage.setItem(key,JSON.stringify({t:Date.now(),date,rows,candidates}));}catch(e){}
+  renderRotation(rows,date,candidates);
 }
-function renderRotation(rows,date){
+function renderRotation(rows,date,candidates=[]){
   MARKET_MOOD={...MARKET_MOOD,rotation:rows.filter(r=>r.d1>0).length/rows.length,date:date||MARKET_MOOD.date}; renderMarketMood();
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body)return;
   if(meta) meta.textContent=`資料日 ${date||"—"} · 外資估算淨流入`;
@@ -983,11 +1006,18 @@ function renderRotation(rows,date){
     return `<tr><td class="rank">${i+1}</td><td class="sector-name">${r.name}<small>今日外資貢獻前二：${leaders||"—"}</small><div class="flow5">${flow}</div></td>
       <td>${money(r.d1)}</td><td>${money(r.d5)}</td><td>${money(r.d20)}</td><td><span class="signal ${sig.c}">${sig.t}</span></td></tr>`;}).join("");
   const top=rows[0], rising=rows.find(r=>rotationSignal(r).t==="轉為買超");
+  const picks=candidates.filter(x=>Number.isFinite(x.d5)&&Number.isFinite(x.d1)).sort((a,b)=>b.score-a.score||b.d5-a.d5).slice(0,10);
+  const pickHtml=picks.map(x=>{const streak=x.streak?`外資連${x.dir>0?'買':'賣'} ${x.streak} 日`:"外資無連續方向";
+    return `<div class="candidate" data-c="${x.code}"><div class="candidate-head"><span><small>${x.code}</small> ${x.name} <small>· ${x.group}</small></span><span class="candidate-grade">${x.grade}</span></div>
+      <div class="candidate-facts"><span class="${x.dir>0?'pos':x.dir<0?'neg':''}">${streak}</span><span class="${cls(x.d5)}">5日 ${x.d5>0?'+':''}${x.d5.toFixed(2)}億</span><span>${x.above?'站上月線':'月線下'}</span><span>${x.breakout?'突破20日高點':'未突破'}</span><span>量能 ${x.volRatio?x.volRatio.toFixed(1)+'倍':'—'}</span></div></div>`;}).join("");
   body.innerHTML=`<div class="tablewrap"><table><thead><tr><th class="rank">#</th><th style="text-align:left">族群</th><th>今日</th><th>5日</th><th>20日</th><th>狀態</th></tr></thead><tbody>${table}</tbody></table></div>
     <div class="rotation-summary">今日外資淨流入最高為 <b>${top.name}</b>（${top.d1>0?"+":""}${top.d1.toFixed(2)} 億元）${rising?`；<b>${rising.name}</b> 由中期賣超轉為今日買超。`:"。"}</div>
+    <div class="candidate-title">外資＋技術面候選股 <span class="tag live">即時</span></div><div class="candidate-grid">${pickHtml}</div>
+    <div class="note">候選排序綜合外資連買、近5日買超、站上20日均線、突破20日高點及量能放大；是研究篩選，不是買進建議。點選股票可查看K線與完整籌碼。</div>
     <div class="note">圖中紅柱向上為買超、綠柱向下為賣超，柱長代表相對金額；游標移到柱子可看精確億元。「5日」是五根柱子的加總。估算方式：代表股外資淨買賣股數 × 當日收盤價後加總。<button class="ghost" id="rotRefresh" style="margin-left:8px;padding:4px 10px">重新計算</button></div>`;
   const rb=$("rotRefresh"); if(rb) rb.onclick=()=>loadRotation(true);
   bindFlowTooltips(body);
+  body.querySelectorAll(".candidate").forEach(x=>x.onclick=()=>showDetail(x.dataset.c));
 }
 function bindFlowTooltips(scope){
   let tip=$("flow-tooltip");
