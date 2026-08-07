@@ -134,6 +134,8 @@
   .rotation .sector-name small{display:block; color:var(--muted); font-weight:400; font-size:10.5px; margin-top:3px}
   .flow5{margin-top:5px; min-width:270px}
   .flow-chart{display:block; width:270px; height:68px; max-width:100%; overflow:visible}
+  .flow-bar{cursor:pointer}
+  .flow-tooltip{position:fixed; z-index:9999; pointer-events:none; display:none; padding:7px 9px; border-radius:8px; background:#111827; color:#fff; border:1px solid rgba(255,255,255,.18); box-shadow:0 6px 20px rgba(0,0,0,.35); font-size:12px; line-height:1.45; white-space:nowrap}
   .signal{display:inline-block; min-width:44px; text-align:center; padding:3px 8px; border-radius:7px; font-size:11px; font-weight:700}
   .signal.lead{background:rgba(239,77,90,.15); color:var(--up)}
   .signal.turn{background:rgba(79,157,255,.15); color:var(--accent)}
@@ -975,7 +977,7 @@ function renderRotation(rows,date){
   const table=rows.map((r,i)=>{const sig=rotationSignal(r); const leaders=r.leaders.map(x=>x.n).join("、");
     const days=r.flow5||[], peak=Math.max(1,...days.map(x=>Math.abs(x.value))), bw=34,gap=18,zero=27;
     const bars=days.map((x,j)=>{const h=Math.max(2,Math.abs(x.value)/peak*21),y=x.value>=0?zero-h:zero,color=x.value>=0?'var(--up)':'var(--down)',cx=8+j*(bw+gap);
-      return `<g><title>${x.date}｜外資${x.value>=0?'買超':'賣超'} ${Math.abs(x.value).toFixed(2)} 億元</title><rect x="${cx}" y="${y.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="3" fill="${color}"/><text class="chart-txt" x="${cx+bw/2}" y="61" text-anchor="middle">${mdLabel(x.date)}</text></g>`;}).join("");
+      return `<g><rect class="flow-bar" data-date="${x.date}" data-value="${x.value.toFixed(4)}" x="${cx}" y="${y.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="3" fill="${color}"/><text class="chart-txt" x="${cx+bw/2}" y="61" text-anchor="middle">${mdLabel(x.date)}</text></g>`;}).join("");
     const label=days.map(x=>`${mdLabel(x.date)} ${x.value>=0?'買超':'賣超'} ${Math.abs(x.value).toFixed(1)}億`).join('、');
     const flow=`<svg class="flow-chart" viewBox="0 0 270 68" role="img" aria-label="近5日外資流向：${label}"><line x1="4" y1="${zero}" x2="266" y2="${zero}" stroke="var(--muted)" stroke-opacity=".45"/>${bars}<text class="chart-txt" x="266" y="10" text-anchor="end">買超 ↑</text><text class="chart-txt" x="266" y="45" text-anchor="end">賣超 ↓</text></svg>`;
     return `<tr><td class="rank">${i+1}</td><td class="sector-name">${r.name}<small>今日外資貢獻前二：${leaders||"—"}</small><div class="flow5">${flow}</div></td>
@@ -985,6 +987,17 @@ function renderRotation(rows,date){
     <div class="rotation-summary">今日外資淨流入最高為 <b>${top.name}</b>（${top.d1>0?"+":""}${top.d1.toFixed(2)} 億元）${rising?`；<b>${rising.name}</b> 由中期賣超轉為今日買超。`:"。"}</div>
     <div class="note">圖中紅柱向上為買超、綠柱向下為賣超，柱長代表相對金額；游標移到柱子可看精確億元。「5日」是五根柱子的加總。估算方式：代表股外資淨買賣股數 × 當日收盤價後加總。<button class="ghost" id="rotRefresh" style="margin-left:8px;padding:4px 10px">重新計算</button></div>`;
   const rb=$("rotRefresh"); if(rb) rb.onclick=()=>loadRotation(true);
+  bindFlowTooltips(body);
+}
+function bindFlowTooltips(scope){
+  let tip=$("flow-tooltip");
+  if(!tip){tip=document.createElement("div");tip.id="flow-tooltip";tip.className="flow-tooltip";document.body.appendChild(tip);}
+  const show=(e,bar)=>{const v=Number(bar.dataset.value),buy=v>=0;
+    tip.innerHTML=`<b>${bar.dataset.date}</b><br>外資${buy?'買超':'賣超'} <span style="color:${buy?'#ff7582':'#54d69a'}">${Math.abs(v).toFixed(2)} 億元</span>`;
+    tip.style.display="block";move(e,bar);};
+  const move=(e,bar)=>{const r=bar.getBoundingClientRect(),x=e.clientX||r.left+r.width/2,y=e.clientY||r.top;
+    tip.style.left=Math.min(window.innerWidth-tip.offsetWidth-8,x+12)+"px";tip.style.top=Math.max(8,y-tip.offsetHeight-10)+"px";};
+  scope.querySelectorAll(".flow-bar").forEach(bar=>{bar.onmouseenter=e=>show(e,bar);bar.onmousemove=e=>move(e,bar);bar.onmouseleave=()=>tip.style.display="none";bar.onclick=e=>{e.stopPropagation();show(e,bar);};});
 }
 
 /* ============ 分類首頁 ============ */
