@@ -151,6 +151,15 @@
   .candidate-head small{color:var(--muted); font-weight:400}
   .candidate-grade{font-size:11px; padding:3px 7px; border-radius:7px; background:rgba(79,157,255,.13); color:var(--accent)}
   .candidate-facts{display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:7px; color:var(--muted); font-size:11.5px}
+  .score-overview{display:grid; grid-template-columns:150px 1fr; gap:14px; align-items:center}
+  .score-number{font-size:38px; line-height:1; font-weight:850; color:var(--accent); font-variant-numeric:tabular-nums}
+  .score-number small{font-size:13px; color:var(--muted); font-weight:500}
+  .score-delta{font-size:12px; margin-top:6px; color:var(--muted)}
+  .score-facts{display:flex; flex-wrap:wrap; gap:6px}
+  .score-fact{font-size:11.5px; padding:5px 8px; border-radius:7px; background:var(--panel2); border:1px solid var(--line)}
+  .sell-alert{margin-top:11px; padding:10px 12px; border-radius:9px; background:var(--panel2); border-left:4px solid var(--accent); font-size:13px; line-height:1.65}
+  .sell-alert.warn{border-left-color:var(--f-dealer)} .sell-alert.danger{border-left-color:var(--up)}
+  @media(max-width:560px){.score-overview{grid-template-columns:1fr}}
   @media(max-width:720px){.candidate-grid{grid-template-columns:1fr}}
   /* 我的關注清單 */
   .watchlist{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:15px 16px; margin-bottom:16px}
@@ -694,7 +703,7 @@ function saveWatchlist(list){
 function watchedStock(code){return loadWatchlist().find(x=>x.code===String(code));}
 function upsertWatch(item){
   const list=loadWatchlist(), i=list.findIndex(x=>x.code===item.code);
-  const next={code:item.code,name:item.name||list[i]?.name||"",startedAt:item.startedAt||list[i]?.startedAt||localToday(),note:item.note??list[i]?.note??"",updatedAt:new Date().toISOString()};
+  const next={code:item.code,name:item.name||list[i]?.name||"",startedAt:item.startedAt||list[i]?.startedAt||localToday(),boughtAt:item.boughtAt??list[i]?.boughtAt??"",note:item.note??list[i]?.note??"",updatedAt:new Date().toISOString()};
   if(i>=0) list[i]=next; else list.unshift(next);
   saveWatchlist(list); return next;
 }
@@ -764,13 +773,13 @@ function watchEditorHtml(code,name){
   return `<div class="panel watch-editor" id="watch-editor">
     <div class="panel-h"><span class="t">我的觀察紀錄</span><span class="meta">${esc(code)} ${esc(name||w.name||"")} · 私人資料</span></div>
     <textarea id="watch-note" placeholder="記錄你的觀察，例如：關注催化劑、籌碼變化、支撐壓力、下次檢查條件…">${esc(w.note||"")}</textarea>
-    <div class="watch-editor-actions"><label class="watch-start">開始關注<input id="detail-watch-date" type="date" value="${esc(w.startedAt||localToday())}"></label><button class="watch-save" id="watch-note-save">儲存觀察</button><button class="watch-remove" id="detail-watch-remove">移除關注</button><span class="watch-saved" id="watch-editor-msg">${w.updatedAt?"上次儲存 "+new Date(w.updatedAt).toLocaleString("zh-TW"):""}</span></div>
+    <div class="watch-editor-actions"><label class="watch-start">開始關注<input id="detail-watch-date" type="date" value="${esc(w.startedAt||localToday())}"></label><label class="watch-start">買入日期<input id="detail-buy-date" type="date" value="${esc(w.boughtAt||"")}"></label><button class="watch-save" id="watch-note-save">儲存觀察</button><button class="watch-remove" id="detail-watch-remove">移除關注</button><span class="watch-saved" id="watch-editor-msg">${w.updatedAt?"上次儲存 "+new Date(w.updatedAt).toLocaleString("zh-TW"):""}</span></div>
   </div>`;
 }
 function bindWatchEditor(code,name,rerender){
-  const msg=$("watch-editor-msg"), date=$("detail-watch-date");
-  const add=$("detail-watch-add"); if(add)add.onclick=()=>{upsertWatch({code,name,startedAt:date.value||localToday(),note:""});rerender();};
-  const save=$("watch-note-save"); if(save)save.onclick=()=>{const w=watchedStock(code); if(!w)return; upsertWatch({...w,name:name||w.name,startedAt:date.value||localToday(),note:$("watch-note").value}); msg.textContent="已儲存 · "+new Date().toLocaleString("zh-TW");};
+  const msg=$("watch-editor-msg"), date=$("detail-watch-date"), buyDate=$("detail-buy-date");
+  const add=$("detail-watch-add"); if(add)add.onclick=()=>{upsertWatch({code,name,startedAt:date.value||localToday(),boughtAt:"",note:""});rerender();};
+  const save=$("watch-note-save"); if(save)save.onclick=()=>{const w=watchedStock(code); if(!w)return; upsertWatch({...w,name:name||w.name,startedAt:date.value||localToday(),boughtAt:buyDate?.value||"",note:$("watch-note").value}); msg.textContent="已儲存 · "+new Date().toLocaleString("zh-TW");};
   const note=$("watch-note"); if(note)note.onkeydown=e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();save.click();}};
   const del=$("detail-watch-remove"); if(del)del.onclick=()=>{if(confirm(`確定要將 ${code} 從關注清單移除嗎？`)){removeWatch(code);rerender();}};
 }
@@ -952,9 +961,46 @@ function stockSetup(code,name,group,flow,price){
   const volRatio=last&&volAvg?vols.at(-1)/volAvg:null, fd=flow.daily||[];
   let streak=0,dir=0;if(fd.length&&fd.at(-1).value!==0){dir=Math.sign(fd.at(-1).value);for(let i=fd.length-1;i>=0&&Math.sign(fd[i].value)===dir;i--)streak++;}
   const above=ma20!=null&&last?last.close>=ma20:false;
+  const lows=rows.slice(-21,-1).map(x=>Number(x.min)).filter(Number.isFinite);
+  const breakdown=!!last&&lows.length>=20&&last.close<Math.min(...lows);
+  const downVolume=rows.length>1&&last.close<rows.at(-2).close&&volRatio>=1.2;
   let score=(dir>0&&streak>=3?2:dir>0?1:0)+(flow.d5>0?1:0)+(above?1:0)+(breakout?2:0)+(volRatio>=1.2?1:0)-(flow.d1<0?1:0);
   const grade=score>=5?"籌碼技術同向":score>=3?"等待突破確認":"訊號不足";
-  return {code,name,group,d1:flow.d1,d5:flow.d5,streak,dir,above,breakout,volRatio,score,grade};
+  return {code,name,group,d1:flow.d1,d5:flow.d5,streak,dir,above,breakout,breakdown,downVolume,volRatio,score,grade};
+}
+function stockGroup(code){
+  const rg=ROTATION_GROUPS.find(g=>g.stocks.some(x=>x[0]===code));if(rg)return rg.name;
+  const sec=SECTORS.find(g=>g.stocks.some(x=>x[0]===code));return sec?.name||"其他";
+}
+function setupAt(code,name,price,inst,offset=0){
+  const rows=recentTradingDays(price,70), target=rows.at(-(offset+1));if(!target)return null;
+  const p=(price||[]).filter(x=>x.date<=target.date), ii=(inst||[]).filter(x=>x.date<=target.date);
+  const flow=foreignCapitalFlow(ii,p);return stockSetup(code,name,stockGroup(code),flow,p);
+}
+function stockScoreHtml(code,name,price,inst){
+  const now=setupAt(code,name,price,inst,0), prev=setupAt(code,name,price,inst,1);
+  if(!now)return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分</span></div><div class="note">資料不足，暫時無法評分。</div></div>`;
+  const delta=prev?now.score-prev.score:null, deltaText=delta==null?"前日無資料":delta===0?"與前一交易日相同":`較前一交易日 ${delta>0?'+':''}${delta} 分`;
+  const facts=[
+    {ok:now.dir>0,t:now.streak?`外資連${now.dir>0?'買':'賣'} ${now.streak} 日`:"外資無連續方向"},
+    {ok:now.d5>0,t:`5日外資${now.d5>=0?'買超':'賣超'} ${Math.abs(now.d5||0).toFixed(2)} 億`},
+    {ok:now.above,t:now.above?"站上20日均線":"跌破20日均線"},
+    {ok:now.breakout,t:now.breakout?"突破20日高點":"未突破20日高點"},
+    {ok:now.volRatio>=1.2,t:`量能 ${now.volRatio?now.volRatio.toFixed(1)+' 倍':'—'}`}
+  ];
+  const reasons=[];let risk=0;
+  if(delta!=null&&delta<=-2){risk++;reasons.push(`評分單日下降 ${Math.abs(delta)} 分`);}
+  if(now.dir<0&&now.streak>=2){risk++;reasons.push(`外資連賣 ${now.streak} 日`);}
+  if(now.d5<0){risk++;reasons.push("近5日外資轉為賣超");}
+  if(!now.above){risk++;reasons.push("收盤跌破20日均線");}
+  if(now.downVolume){risk++;reasons.push("放量下跌");}
+  if(now.breakdown){risk+=2;reasons.push("跌破近20日低點");}
+  const alert=now.breakdown||risk>=4?{c:"danger",t:"紅色風險：考慮退出或嚴設停損"}:risk>=2?{c:"warn",t:"橘色警示：檢查支撐並考慮減碼"}:delta<0?{c:"warn",t:"黃色警示：評分下降，持續觀察"}:{c:"",t:"暫無明顯賣出警示"};
+  return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分<span class="tag live">即時</span></span><span class="meta">${esc(now.group)} · 研究用</span></div>
+    <div class="score-overview"><div><div class="score-number">${now.score}<small> / 7 分</small></div><div class="score-delta ${delta>0?'pos':delta<0?'neg':''}">${deltaText}</div></div>
+    <div class="score-facts">${facts.map(x=>`<span class="score-fact ${x.ok?'pos':'neg'}">${x.t}</span>`).join("")}</div></div>
+    <div class="sell-alert ${alert.c}"><b>${alert.t}</b>${reasons.length?`<br>觸發原因：${reasons.join("、")}`:"<br>仍需配合個人持有成本、支撐位置與風險承受度。"}</div>
+    <div class="note">評分降低不等於自動賣出；連續下降且同時出現外資連賣、跌破月線／前低或放量下跌時，警示可靠度較高。</div></div>`;
 }
 async function loadRotation(force=false){
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body) return;
@@ -1240,6 +1286,8 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
       ${vcard("殖利率", pv.dividend_yield!=null?num(pv.dividend_yield,2)+"%":"–", "現金殖利率")}
       ${vcard("最新月營收 YoY", latestYoY!=null?`<span class="${cls(latestYoY)}">${signed(latestYoY.toFixed(1))}%</span>`:"–", latestRev?revLabels[revLabels.length-1]+" 月":"")}
     </div>
+
+    ${stockScoreHtml(code,nm,price,inst)}
 
     ${watchEditorHtml(code,nm)}
 
