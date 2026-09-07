@@ -218,6 +218,8 @@
   .tag.live{background:rgba(79,157,255,.16); color:var(--accent)}
   .tag.daily{background:rgba(240,136,62,.18); color:var(--f-dealer)}
   .tag-legend{font-size:12.5px; color:var(--muted); margin:-10px 2px 20px; display:flex; gap:16px; flex-wrap:wrap}
+  .freshness{font-size:12px; line-height:1.5; margin:-10px 2px 16px; padding:7px 10px; border:1px solid var(--line); border-radius:8px; color:var(--muted); background:var(--panel2)}
+  .freshness.ok{color:var(--up)} .freshness.warn{color:var(--f-dealer); border-color:var(--f-dealer)}
   .status{padding:44px 0; text-align:center; color:var(--muted)}
   .note{color:var(--muted); font-size:12px; line-height:1.6; margin-top:8px}
   .disc{color:var(--muted); font-size:11.5px; line-height:1.6; margin-top:26px; border-top:1px solid var(--line); padding-top:14px}
@@ -228,32 +230,37 @@
   <h1 id="home">台股 AI 類股動態</h1>
   <p class="sub">AI 供應鏈子板塊分類 · 點選個股看股價走勢、營收成長、估值比、三大法人與經查證的 AI 分析</p>
   <div class="tag-legend">
-    <span><span class="tag live">即時</span> 每次開啟即更新（抓當下資料）</span>
+    <span><span class="tag live">即時</span> 每30分鐘重新查詢（期間使用有效快取）</span>
     <span><span class="tag daily">每日</span> 排程每天更新一次（查證文字）</span>
   </div>
+  <div class="freshness" id="freshness">本次開啟正在重新查詢最新資料…</div>
   <div class="searchbar">
     <input id="code" type="text" inputmode="numeric" placeholder="或直接輸入股票代碼，例如 2330" autocomplete="off">
     <button class="go" id="go">查詢</button>
   </div>
   <div id="view"></div>
-  <div class="disc">資料來源：股價／營收／估值／三大法人／即時新聞／即時研判皆為 FinMind 即時資料，每次開啟自動更新；「深度分析（AI 查證大綱）」為人工查證之快照（截至 2026-07-15）。僅供研究參考，非投資建議。</div>
+  <div class="disc">資料來源：股價／營收／估值／三大法人／即時新聞／即時研判皆為 FinMind 資料；每30分鐘重新查詢，期間使用有效快取以避免免費額度限制。「深度分析（AI 查證大綱）」為人工查證之快照（截至 2026-07-15）。僅供研究參考，非投資建議。</div>
 </div>
 
 <script>
 const API="https://api.finmindtrade.com/api/v4/data";
 const $=id=>document.getElementById(id);
 const view=$("view"), codeEl=$("code");
+const PAGE_OPENED_AT=Date.now();
+const FRESHNESS={latest:"",fresh:new Set(),cached:new Map(),stale:new Map()};
 const AS_OF="2026-09-07";
+const BUY_SCORE=5;
+const FORECAST_DAYS=20;
 /* 每日大盤分析（客觀中立、經查證；由每日排程更新）*/
 const MARKET={
   asOf:"2026-09-07",
-  summary:"9/7 台股加權指數終場收 47,326.27 點，上漲 775.14 點（+1.67%），成交值約 9,950.08 億元；盤中最高 47,429.58 點、最低 46,724.00 點。三大法人合計買超 1,138.65 億元，其中外資及陸資買超 883.08 億元、投信買超 98.70 億元、自營商合計買超 156.87 億元。權值股方面，台積電上漲 50 元收 2,460 元、聯發科上漲 345 元收 4,760 元、鴻海持平 0 元收 256 元、台達電上漲 25 元收 1,850 元。族群輪動方面，南亞科上漲 21 元收 517 元、華邦電上漲 6 元收 180 元、欣興上漲 47 元收 949 元、南電下跌 5 元收 1,050 元。",
-  pos:["三大法人合計買超 1,138.65 億元，投信與外資動向可作為後續籌碼觀察重點","相對強勢個股包括「聯發科上漲 345 元收 4,760 元、台積電上漲 50 元收 2,460 元、欣興上漲 47 元收 949 元」，顯示盤面仍有資金輪動","成交值約 9,950.08 億元，市場仍維持一定流動性"],
-  neg:["加權指數上漲 775.14 點，盤中高低差 705.58 點，短線波動仍高","相對弱勢個股包括「景碩下跌 6 元收 813 元、南電下跌 5 元收 1,050 元」，大型權值股走勢可能壓抑指數","自營商合計買超 156.87 億元，後續仍須觀察法人資金是否延續"],
+  summary:"9/7 台股加權指數終場收 47,326.27 點，上漲 775.14 點（+1.67%）；上市一般股票成交金額約 9,068.49 億元。三大法人合計買超 1,138.65 億元，其中外資及陸資買超 883.08 億元、投信買超 98.70 億元、自營商合計買超 156.87 億元；外資台指期未平倉淨空單為 79,399 口。權值股方面，台積電上漲 50 元收 2,460 元、鴻海平盤收 256 元、廣達上漲 2.5 元收 347.5 元、台達電上漲 25 元收 1,850 元。族群輪動方面，PCB／ABF 的欣興、台光電、金像電走強；AI Server 漲跌互見，散熱代表股回落。ASIC 分化，創意上漲但世芯-KY走弱；記憶體與封測偏強，電源漲跌互見。網通／CPO 則偏弱，智邦平盤、華星光與聯亞回落。整體由半導體與電子零組件領漲，但電腦及週邊、光電與通信網路類指數收低，族群輪動仍明顯。",
+  pos:["三大法人合計買超 1,138.65 億元，外資及陸資買超 883.08 億元、投信買超 98.70 億元，現貨資金偏多","台積電上漲 50 元收 2,460 元；PCB／ABF 的欣興、台光電、金像電走強，記憶體與封測代表股亦收高","加權指數收 47,326.27 點、上漲 1.67%，半導體類指數上漲 2.92%、電子零組件類上漲 1.86%"],
+  neg:["外資台指期未平倉仍為淨空 79,399 口，期貨避險部位尚未轉多","AI Server 表現分化，散熱的奇鋐、雙鴻走弱；ASIC 的世芯-KY回落","網通／CPO 偏弱，華星光、聯亞、波若威走低；電腦及週邊、光電與通信網路類指數均收低"],
   items:[
-    {t:"9/7 加權指數日行情：收 47,326.27 點、上漲 775.14 點",s:"FinMind",u:"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=TAIEX&start_date=2026-09-07"},
+    {t:"9/7 加權指數日行情：收 47,326.27 點、上漲 775.14 點",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20260907&type=ALL&response=html"},
     {t:"9/7 三大法人買賣金額：合計買超 1,138.65 億元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/fund/BFI82U?date=20260907&response=html"},
-    {t:"9/7 台積電日行情：台積電上漲 50 元收 2,460 元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20260907&type=ALLBUT0999&response=html"}
+    {t:"9/7 台積電日行情：上漲 50 元收 2,460 元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20260907&stockNo=2330&response=html"}
   ]
 };
 
@@ -608,28 +615,88 @@ const ymd=d=>d.toISOString().slice(0,10);
 function daysAgo(n){const d=new Date(); d.setDate(d.getDate()-n); return d;}
 function monthsAgo(n){const d=new Date(); d.setMonth(d.getMonth()-n); return d;}
 const CACHE_TTL=30*60*1000; // 本機快取 30 分鐘，減少 FinMind 請求數、避免觸及免費上限
+function dataLatestDate(rows){return (rows||[]).map(x=>x&&x.date).filter(Boolean).sort().at(-1)||"";}
+function apiKeyLabel(key){
+  const [,dataset="",code=""]=(key||"").split("|");
+  const names={TaiwanStockInfo:"基本資料",TaiwanStockPrice:"股價",TaiwanStockPER:"估值",TaiwanStockMonthRevenue:"營收",TaiwanStockFinancialStatements:"財報",TaiwanStockInstitutionalInvestorsBuySell:"法人",TaiwanStockShareholding:"外資持股",TaiwanStockNews:"新聞",TaiwanStockTotalInstitutionalInvestors:"三大法人",TaiwanFuturesInstitutionalInvestors:"期貨"};
+  return `${code?code+" ":""}${names[dataset]||dataset}`.trim();
+}
+function renderFreshness(){
+  const el=$("freshness");if(!el)return;const stale=FRESHNESS.stale.size,cached=FRESHNESS.cached.size,checked=FRESHNESS.fresh.size+cached+stale;
+  if(stale){
+    const dates=[...FRESHNESS.stale.values()].filter(Boolean).sort(),oldest=dates.at(0)||"日期不明";
+    const labels=[...FRESHNESS.stale.keys()].map(apiKeyLabel),shown=labels.slice(0,4).join("、")+(labels.length>4?`等 ${labels.length} 項`:"");
+    el.className="freshness warn";el.textContent=`⚠ ${stale} 項查詢失敗（${shown}），已使用有效舊快取；其中最舊資料日 ${oldest}。另有 ${FRESHNESS.fresh.size} 項更新成功、${cached} 項使用30分鐘內快取。`;
+  }else if(checked){
+    el.className="freshness ok";el.textContent=`✓ ${FRESHNESS.fresh.size} 項已重新查詢、${cached} 項使用30分鐘內快取${FRESHNESS.latest?` · API最新資料日 ${FRESHNESS.latest}`:""}`;
+  }
+}
+function usableApiRows(dataset,rows){
+  if(!Array.isArray(rows)||!rows.length)return false;
+  if(dataset==="TaiwanStockPrice")return rows.some(x=>x&&x.date&&Number.isFinite(Number(x.close)));
+  if(dataset==="TaiwanStockInstitutionalInvestorsBuySell")return rows.some(x=>x&&x.date&&x.name&&Number.isFinite(Number(x.buy))&&Number.isFinite(Number(x.sell)));
+  return rows.some(x=>x&&typeof x==="object");
+}
+function latestLocalApiCache(dataset,code){
+  const prefix="fm:"+dataset+"|"+(code||"")+"|";let best=null;
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k||!k.startsWith(prefix))continue;const x=JSON.parse(localStorage.getItem(k)||"null");if(x&&usableApiRows(dataset,x.d)&&(!best||x.t>best.t))best=x;}}catch(e){}
+  return best?.d||[];
+}
+const API_MAX_CONCURRENT=4;
+let API_ACTIVE=0;
+const API_QUEUE=[];
+function withApiSlot(task){
+  return new Promise((resolve,reject)=>{
+    const run=async()=>{API_ACTIVE++;try{resolve(await task());}catch(e){reject(e);}finally{API_ACTIVE--;const next=API_QUEUE.shift();if(next)next();}};
+    if(API_ACTIVE<API_MAX_CONCURRENT)run();else API_QUEUE.push(run);
+  });
+}
+async function rotationApi(dataset,code,startDate){
+  let timer;try{const rows=await Promise.race([fj(dataset,code,startDate),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("rotation timeout")),12000);})]);if(!usableApiRows(dataset,rows))throw new Error("empty rotation data");return rows;}
+  catch(e){return latestLocalApiCache(dataset,code);}
+  finally{clearTimeout(timer);}
+}
 async function fj(dataset, code, startDate){
   const key="fm:"+dataset+"|"+(code||"")+"|"+(startDate?ymd(startDate):"");
   let cached=null; try{ cached=JSON.parse(localStorage.getItem(key)||"null"); }catch(e){}
-  if(cached && Date.now()-cached.t < CACHE_TTL) return cached.d;   // 新鮮快取直接用
+  if(cached && usableApiRows(dataset,cached.d) && Date.now()-cached.t < CACHE_TTL){
+    FRESHNESS.cached.set(key,dataLatestDate(cached.d));FRESHNESS.stale.delete(key);renderFreshness();return cached.d;
+  }
   try{
     const p={dataset}; if(code) p.data_id=code; if(startDate) p.start_date=ymd(startDate);
-    const r=await fetch(API+"?"+new URLSearchParams(p)); const j=await r.json();
+    const j=await withApiSlot(async()=>{const r=await fetch(API+"?"+new URLSearchParams(p));return r.json();});
     if(j.status!==200) throw new Error(j.msg||"查詢失敗");
     try{ localStorage.setItem(key, JSON.stringify({t:Date.now(), d:j.data})); }catch(e){}
+    FRESHNESS.fresh.add(key);FRESHNESS.cached.delete(key);FRESHNESS.stale.delete(key);const latest=dataLatestDate(j.data);if(latest>FRESHNESS.latest)FRESHNESS.latest=latest;renderFreshness();
     return j.data;
   }catch(e){
-    if(cached) return cached.d;   // 限流/離線時退回舊快取，維持可用
+    const fallback=cached&&usableApiRows(dataset,cached.d)?cached.d:latestLocalApiCache(dataset,code);
+    if(usableApiRows(dataset,fallback)){FRESHNESS.cached.delete(key);FRESHNESS.stale.set(key,dataLatestDate(fallback));renderFreshness();return fallback;} // 日期範圍不同時，也改用同股票、同資料類型最近一份有效快取
     throw e;
   }
 }
 const friendlyErr=e=>/Failed to fetch|upper limit|402|NetworkError|Load failed/i.test(e&&e.message||"")
   ? "資料來源暫時無法讀取——可能已達 FinMind 每小時免費請求上限（會自動重置）。請稍候幾分鐘再重試。"
   : (e&&e.message||"未知錯誤");
+const FUND_CACHE_TTL=24*60*60*1000;
+async function fundamentalApi(dataset,code,startDate){
+  const key=`fund:${dataset}|${code}`;let cached=null;try{cached=JSON.parse(localStorage.getItem(key)||"null");}catch(e){}
+  if(cached&&usableApiRows(dataset,cached.d)&&Date.now()-cached.t<FUND_CACHE_TTL)return cached.d;
+  try{const rows=await fj(dataset,code,startDate);if(usableApiRows(dataset,rows))try{localStorage.setItem(key,JSON.stringify({t:Date.now(),d:rows}));}catch(e){}return rows;}
+  catch(e){if(cached&&usableApiRows(dataset,cached.d))return cached.d;throw e;}
+}
+/* 法人持續性濾網：排除淨額低於買賣總額 5% 的當日來回，以及金額相近的相鄰反向沖銷。 */
+function cleanInstitutionSeries(inst,kind){
+  const m={}; (inst||[]).forEach(r=>{const hit=kind==="trust"?r.name==="Investment_Trust":/^Foreign/.test(r.name);if(!hit)return;
+    const buy=Number(r.buy)||0,sell=Number(r.sell)||0;(m[r.date]||={buy:0,sell:0});m[r.date].buy+=buy;m[r.date].sell+=sell;});
+  const out=Object.keys(m).sort().map(date=>{const x=m[date],net=x.buy-x.sell,gross=x.buy+x.sell;
+    return {date,buy:x.buy,sell:x.sell,rawNet:net,net:gross&&Math.abs(net)/gross>=.05?net:0,filtered:gross>0&&Math.abs(net)/gross<.05};});
+  for(let i=1;i<out.length;i++){const a=out[i-1],b=out[i];if(a.net*b.net<0&&Math.min(Math.abs(a.net),Math.abs(b.net))/Math.max(Math.abs(a.net),Math.abs(b.net))>=.6){a.net=0;b.net=0;a.filtered=b.filtered=true;}}
+  return out;
+}
 /* 投信淨買賣序列與連續天數 */
 function trustSeries(inst){
-  const m={}; (inst||[]).forEach(r=>{ if(r.name==="Investment_Trust") m[r.date]=(m[r.date]||0)+(r.buy-r.sell)/1000; });
-  return Object.keys(m).sort().map(d=>({date:d, net:m[d]}));
+  return cleanInstitutionSeries(inst,"trust").map(x=>({...x,net:x.net/1000,rawNet:x.rawNet/1000}));
 }
 function streak(ser){
   if(!ser.length) return {dir:0,days:0};
@@ -904,7 +971,7 @@ function aiUniverse(){
 async function scanTrust(){
   if(RADAR_CACHE){ renderRadar(RADAR_CACHE); return; }
   const rkey="radar:"+ymd(new Date());
-  try{ const c=JSON.parse(localStorage.getItem(rkey)||"null"); if(c&&c.length){ RADAR_CACHE=c; renderRadar(c); return; } }catch(e){}
+  try{ const c=JSON.parse(localStorage.getItem(rkey)||"null"); if(c&&c.t>=PAGE_OPENED_AT&&Array.isArray(c.d)){ RADAR_CACHE=c.d; renderRadar(c.d); return; } }catch(e){}
   const body=$("radar-body"); const list=aiUniverse(); const res=[];
   for(let i=0;i<list.length;i+=6){
     const chunk=list.slice(i,i+6);
@@ -917,7 +984,7 @@ async function scanTrust(){
     if(body) body.innerHTML=`<div class="note">掃描中… ${Math.min(i+6,list.length)} / ${list.length}</div>`;
   }
   if(!res.length){ if(body) body.innerHTML=`<div class="note">${friendlyErr({message:"Failed to fetch"})} <button class="ghost" id="rdRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`; const rb=$("rdRetry"); if(rb) rb.onclick=scanTrust; return; }
-  RADAR_CACHE=res; try{ localStorage.setItem(rkey, JSON.stringify(res)); }catch(e){}
+  RADAR_CACHE=res; try{ localStorage.setItem(rkey, JSON.stringify({t:Date.now(),d:res})); }catch(e){}
   renderRadar(res);
 }
 function renderRadar(res){
@@ -946,30 +1013,38 @@ function rotationSignal(r){
   if(r.d1<0 && r.d5>0) return {t:"短線流出",c:"rest"};
   return {t:"持續流出",c:"weak"};
 }
-function foreignCapitalFlow(inst,price){
+function institutionCapitalFlow(inst,price,kind="foreign"){
   const close={}; (price||[]).forEach(r=>{if(r.date&&Number.isFinite(Number(r.close)))close[r.date]=Number(r.close);});
-  const daily={}; (inst||[]).forEach(r=>{if(!/^Foreign/.test(r.name)||!close[r.date])return;
-    daily[r.date]=(daily[r.date]||0)+(Number(r.buy||0)-Number(r.sell||0))*close[r.date]/1e8;
-  });
+  const daily={}; cleanInstitutionSeries(inst,kind).forEach(r=>{if(close[r.date])daily[r.date]=r.net*close[r.date]/1e8;});
   const dates=Object.keys(daily).sort(), vals=dates.map(d=>daily[d]);
   const total=n=>vals.slice(-n).reduce((s,v)=>s+v,0);
   return {date:dates.at(-1)||"",d1:vals.length?vals.at(-1):null,d5:vals.length?total(5):null,d20:vals.length?total(20):null,
     daily:dates.slice(-20).map(d=>({date:d,value:daily[d]}))};
 }
-function stockSetup(code,name,group,flow,price){
+const foreignCapitalFlow=(inst,price)=>institutionCapitalFlow(inst,price,"foreign");
+function sellPressureWeakening(inst,price){
+  const m={};(inst||[]).forEach(r=>{if(!/^Foreign/.test(r.name))return;const x=m[r.date]||={buy:0,sell:0};x.buy+=Number(r.buy)||0;x.sell+=Number(r.sell)||0;});
+  const rows=Object.keys(m).sort().map(date=>({date,...m[date],gross:m[date].buy+m[date].sell}));if(rows.length<20)return {active:false};
+  const avg=(a,k)=>a.reduce((s,x)=>s+Number(x[k]||0),0)/a.length,recent=rows.slice(-3),prior=rows.slice(-8,-3),base=rows.slice(-20);
+  const sellDrop=avg(prior,"sell")?1-avg(recent,"sell")/avg(prior,"sell"):0,participation=avg(base,"gross")?avg(recent,"gross")/avg(base,"gross"):0;
+  const p=recentTradingDays(price,21),notBreaking=p.length>=21&&p.at(-1).close>=Math.min(...p.slice(0,-1).map(x=>Number(x.min??x.close)));
+  return {active:sellDrop>=.2&&participation>=.5&&notBreaking,sellDrop,participation};
+}
+function stockSetup(code,name,group,flow,price,trustFlow,pressure){
   const rows=recentTradingDays(price,65), last=rows.at(-1), closes=rows.map(x=>x.close);
   const ma20=closes.length>=20?closes.slice(-20).reduce((s,v)=>s+v,0)/20:null;
   const prev20=closes.slice(-21,-1), breakout=!!last&&prev20.length>=20&&last.close>Math.max(...prev20);
   const vols=rows.map(x=>Number(x.Trading_Volume)||0), prevVol=vols.slice(-6,-1), volAvg=prevVol.length?prevVol.reduce((s,v)=>s+v,0)/prevVol.length:0;
   const volRatio=last&&volAvg?vols.at(-1)/volAvg:null, fd=flow.daily||[];
-  let streak=0,dir=0;if(fd.length&&fd.at(-1).value!==0){dir=Math.sign(fd.at(-1).value);for(let i=fd.length-1;i>=0&&Math.sign(fd[i].value)===dir;i--)streak++;}
+  let foreignStreak=0,dir=0;if(fd.length&&fd.at(-1).value!==0){dir=Math.sign(fd.at(-1).value);for(let i=fd.length-1;i>=0&&Math.sign(fd[i].value)===dir;i--)foreignStreak++;}
   const above=ma20!=null&&last?last.close>=ma20:false;
   const lows=rows.slice(-21,-1).map(x=>Number(x.min)).filter(Number.isFinite);
   const breakdown=!!last&&lows.length>=20&&last.close<Math.min(...lows);
   const downVolume=rows.length>1&&last.close<rows.at(-2).close&&volRatio>=1.2;
-  let score=(dir>0&&streak>=3?2:dir>0?1:0)+(flow.d5>0?1:0)+(above?1:0)+(breakout?2:0)+(volRatio>=1.2?1:0)-(flow.d1<0?1:0);
-  const grade=score>=5?"籌碼技術同向":score>=3?"等待突破確認":"訊號不足";
-  return {code,name,group,d1:flow.d1,d5:flow.d5,streak,dir,above,breakout,breakdown,downVolume,volRatio,score,grade};
+  const tf=trustFlow||{daily:[],d1:null,d5:null},ts=streak((tf.daily||[]).map(x=>({date:x.date,net:x.value}))),trustConfirmed=tf.d5>0&&ts.dir>0&&ts.days>=2;
+  let score=(dir>0&&foreignStreak>=3?2:dir>0?1:0)+(flow.d5>0?1:0)+(above?1:0)+(breakout?2:0)+(volRatio>=1.2?1:0)-(flow.d1<0?1:0);
+  const grade=score>=BUY_SCORE?"籌碼技術同向":score>=3?"等待確認":"訊號不足";
+  return {code,name,group,d1:flow.d1,d5:flow.d5,streak:foreignStreak,dir,trustD5:tf.d5,trustStreak:ts.days,trustConfirmed,pressure:pressure||{active:false},above,breakout,breakdown,downVolume,volRatio,score,grade};
 }
 function stockGroup(code){
   const rg=ROTATION_GROUPS.find(g=>g.stocks.some(x=>x[0]===code));if(rg)return rg.name;
@@ -978,25 +1053,35 @@ function stockGroup(code){
 function setupAt(code,name,price,inst,offset=0){
   const rows=recentTradingDays(price,260), target=rows.at(-(offset+1));if(!target)return null;
   const p=(price||[]).filter(x=>x.date<=target.date), ii=(inst||[]).filter(x=>x.date<=target.date);
-  const flow=foreignCapitalFlow(ii,p);if((flow.daily||[]).length<5)return null;return stockSetup(code,name,stockGroup(code),flow,p);
+  const flow=foreignCapitalFlow(ii,p),trustFlow=institutionCapitalFlow(ii,p,"trust"),pressure=sellPressureWeakening(ii,p);if((flow.daily||[]).length<5)return null;return stockSetup(code,name,stockGroup(code),flow,p,trustFlow,pressure);
 }
 function predictionAccuracy(code,name,price,inst){
-  const rows=recentTradingDays(price,260);let correct=0,total=0,bull=0,bear=0;
-  for(let i=20;i<rows.length-10;i++){
+  const rows=recentTradingDays(price,260);let correct=0,total=0;
+  for(let i=20;i<rows.length-FORECAST_DAYS;i++){
     const setup=setupAt(code,name,price,inst,rows.length-1-i);if(!setup)continue;
-    const prediction=setup.score>=3?1:setup.score<=0?-1:0;if(!prediction)continue;
-    const actual=rows[i+10].close-rows[i].close;if(actual===0)continue;
-    total++;if(prediction>0)bull++;else bear++;if(Math.sign(actual)===prediction)correct++;
+    if(setup.score<BUY_SCORE)continue;
+    const actual=rows[i+FORECAST_DAYS].close-rows[i].close;if(actual===0)continue;
+    total++;if(actual>0)correct++;
   }
-  return {correct,total,bull,bear,rate:total?correct/total*100:null};
+  return {correct,total,rate:total?correct/total*100:null};
 }
-function stockScoreHtml(code,name,price,inst){
+function relativeStrength20(price,taiex){
+  const sm=new Map((price||[]).map(x=>[x.date,Number(x.close)])), bm=new Map((taiex||[]).map(x=>[x.date,Number(x.close)]));
+  const dates=[...sm.keys()].filter(d=>Number.isFinite(sm.get(d))&&Number.isFinite(bm.get(d))).sort();
+  if(dates.length<21)return null;
+  const a=dates.at(-21),z=dates.at(-1),sr=sm.get(z)/sm.get(a)-1,br=bm.get(z)/bm.get(a)-1;
+  return {stock:sr*100,benchmark:br*100,excess:(sr-br)*100};
+}
+function stockScoreHtml(code,name,price,inst,taiex){
   const now=setupAt(code,name,price,inst,0), prev=setupAt(code,name,price,inst,1), acc=predictionAccuracy(code,name,price,inst);
   if(!now)return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分</span></div><div class="note">資料不足，暫時無法評分。</div></div>`;
   const delta=prev?now.score-prev.score:null, deltaText=delta==null?"前日無資料":delta===0?"與前一交易日相同":`較前一交易日 ${delta>0?'+':''}${delta} 分`;
+  const rs=relativeStrength20(price,taiex), status=now.score>=BUY_SCORE?"偏多候選":now.score>=3?"觀察等待確認":"目前無買入優勢";
   const facts=[
     {ok:now.dir>0,t:now.streak?`外資連${now.dir>0?'買':'賣'} ${now.streak} 日`:"外資無連續方向"},
     {ok:now.d5>0,t:`5日外資${now.d5>=0?'買超':'賣超'} ${Math.abs(now.d5||0).toFixed(2)} 億`},
+    {ok:now.trustConfirmed,t:now.trustConfirmed?`投信連買 ${now.trustStreak} 日（輔助）`:`投信持續買超未確認（不計分）`},
+    {ok:now.pressure.active,t:now.pressure.active?`賣壓減弱 ${(now.pressure.sellDrop*100).toFixed(0)}%（測試）`:`賣壓減弱未成立（測試）`},
     {ok:now.above,t:now.above?"站上20日均線":"跌破20日均線"},
     {ok:now.breakout,t:now.breakout?"突破20日高點":"未突破20日高點"},
     {ok:now.volRatio>=1.2,t:`量能 ${now.volRatio?now.volRatio.toFixed(1)+' 倍':'—'}`}
@@ -1009,36 +1094,46 @@ function stockScoreHtml(code,name,price,inst){
   if(now.downVolume){risk++;reasons.push("放量下跌");}
   if(now.breakdown){risk+=2;reasons.push("跌破近20日低點");}
   const alert=now.breakdown||risk>=4?{c:"danger",t:"紅色風險：考慮退出或嚴設停損"}:risk>=2?{c:"warn",t:"橘色警示：檢查支撐並考慮減碼"}:delta<0?{c:"warn",t:"黃色警示：評分下降，持續觀察"}:{c:"",t:"暫無明顯賣出警示"};
-  return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分<span class="tag live">即時</span></span><span class="meta">${esc(now.group)} · 研究用</span></div>
+  if(rs)facts.push({ok:rs.excess>0,t:`20日相對大盤 ${rs.excess>=0?'+':''}${rs.excess.toFixed(1)}%`});
+  return `<div class="panel"><div class="panel-h"><span class="t">外資＋技術面評分<span class="tag live">即時</span></span><span class="meta">${esc(now.group)} · ${status}</span></div>
     <div class="score-overview"><div><div class="score-number">${now.score}<small> / 7 分</small></div><div class="score-delta ${delta>0?'pos':delta<0?'neg':''}">${deltaText}</div></div>
     <div class="score-facts">${facts.map(x=>`<span class="score-fact ${x.ok?'pos':'neg'}">${x.t}</span>`).join("")}</div></div>
-    <div class="accuracy"><div class="accuracy-rate">${acc.rate==null?'—':acc.rate.toFixed(0)+'%'}</div><div class="accuracy-copy"><b>歷史10日方向精準率</b><br>${acc.total?`命中 ${acc.correct} / ${acc.total} 次 · 偏多樣本 ${acc.bull} · 偏空樣本 ${acc.bear}`:"有效歷史樣本不足"}</div></div>
+    <div class="accuracy"><div class="accuracy-rate">${acc.rate==null?'—':acc.rate.toFixed(0)+'%'}</div><div class="accuracy-copy"><b>5分以上的近期20日上漲率</b><br>${acc.total?`上漲 ${acc.correct} / ${acc.total} 次 · 每日滾動統計`:"有效歷史樣本不足"}</div></div>
     <div class="sell-alert ${alert.c}"><b>${alert.t}</b>${reasons.length?`<br>觸發原因：${reasons.join("、")}`:"<br>仍需配合個人持有成本、支撐位置與風險承受度。"}</div>
-    <div class="note">精準率算法：歷史上分數 ≥3 預測未來10個交易日上漲，分數 ≤0 預測下跌；1～2分視為中性、不計入。命中次數 ÷ 有效預測次數即為精準率。每日滾動樣本彼此重疊，未計交易成本，僅供研究。評分降低不等於自動賣出。</div></div>`;
+    <div class="note">算法：只統計歷史評分 ≥${BUY_SCORE} 後，未來 ${FORECAST_DAYS} 個交易日是否上漲。投信保留為輔助確認，不納入7分。法人濾網排除淨額低於買賣總額5%的當日來回，以及相鄰兩日金額相近的反向沖銷；公開資料無法辨識個別帳戶，因此是近似排除。每日滾動樣本彼此重疊，僅供研究；低分不等於賣出。</div></div>`;
 }
 async function loadRotation(force=false){
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body) return;
-  const key="foreign-sector-rotation-v3";
-  if(!force){
-    try{const c=JSON.parse(localStorage.getItem(key)||"null");
-      if(c && Date.now()-c.t<ROTATION_TTL){renderRotation(c.rows,c.date,c.candidates||[]);return;}}
-    catch(e){}
-  }
-  body.innerHTML='<div class="note">計算 8 個 AI 族群外資資金流中…</div>';
+  const key="foreign-sector-rotation-v4",backupKey="foreign-sector-rotation-last-good-v4";
+  let fallback=null;
+  const usableRotationCache=c=>c&&Array.isArray(c.rows)&&c.rows.length===ROTATION_GROUPS.length&&c.rows.every(r=>r&&r.count>0&&Array.isArray(r.flow5)&&r.flow5.length>0&&Number.isFinite(Number(r.d5)));
+  const normalizeRotationCache=c=>{if(!c)return c;c.rows=(c.rows||[]).map(r=>({...r,d1:Number(r.d1),d5:Number(r.d5),d20:Number(r.d20),leaders:Array.isArray(r.leaders)?r.leaders:[],flow5:(Array.isArray(r.flow5)?r.flow5:[]).map(x=>({...x,value:Number(x.value)})).filter(x=>x.date&&Number.isFinite(x.value))}));c.candidates=(c.candidates||[]).filter(Boolean).map(x=>({...x,score:Number(x.score)||0,d1:Number(x.d1),d5:Number(x.d5),pressure:x.pressure||{active:false,sellDrop:0,participation:0},trustConfirmed:!!x.trustConfirmed,trustStreak:x.trustStreak||0}));return c;};
+  const findOlderRotationCache=()=>{let best=null;try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k||(!k.startsWith("foreign-sector-rotation-v")&&!k.startsWith("foreign-sector-rotation-last-good-v")))continue;const x=normalizeRotationCache(JSON.parse(localStorage.getItem(k)||"null"));if(usableRotationCache(x)&&(!best||Number(x.t||0)>Number(best.t||0)))best=x;}}catch(e){}return best;};
+  try{let c=normalizeRotationCache(JSON.parse(localStorage.getItem(key)||"null"));if(!usableRotationCache(c))c=normalizeRotationCache(JSON.parse(localStorage.getItem(backupKey)||"null"));if(!usableRotationCache(c))c=findOlderRotationCache();
+      if(usableRotationCache(c)){
+        try{const migrated=JSON.stringify(c);localStorage.setItem(key,migrated);localStorage.setItem(backupKey,migrated);}catch(e){}
+        if(!force&&Date.now()-c.t<ROTATION_TTL){renderRotation(c.rows,c.date,c.candidates||[]);return;}
+        fallback=c;renderRotation(c.rows,c.date,c.candidates||[]);if(meta)meta.textContent=`資料日 ${c.date||"—"} · 背景更新中…`;
+      }}
+  catch(e){}
+  if(!fallback)body.innerHTML='<div class="note">首次計算外資族群資金流，約需 1～2 分鐘…</div>';
   const unique=[...new Set(ROTATION_GROUPS.flatMap(g=>g.stocks.map(s=>s[0])))];
   const pm=new Map(), im=new Map();
-  for(let i=0;i<unique.length;i+=5){
-    const part=unique.slice(i,i+5);
+  for(let i=0;i<unique.length;i+=3){
+    const part=unique.slice(i,i+3);
     await Promise.all(part.map(async c=>{const [p,inst]=await Promise.all([
-      fj("TaiwanStockPrice",c,monthsAgo(2)).catch(()=>[]),
-      fj("TaiwanStockInstitutionalInvestorsBuySell",c,daysAgo(60)).catch(()=>[])
+      rotationApi("TaiwanStockPrice",c,monthsAgo(2)),
+      rotationApi("TaiwanStockInstitutionalInvestorsBuySell",c,daysAgo(60))
     ]);pm.set(c,p);im.set(c,inst);}));
-    if(body) body.innerHTML=`<div class="note">計算 8 個 AI 族群外資資金流中… ${Math.min(i+5,unique.length)} / ${unique.length}</div>`;
+    if(fallback){if(meta)meta.textContent=`資料日 ${fallback.date||"—"} · 背景更新 ${Math.min(i+3,unique.length)} / ${unique.length}`;}
+    else if(body)body.innerHTML=`<div class="note">首次計算外資族群資金流… ${Math.min(i+3,unique.length)} / ${unique.length}</div>`;
   }
   const candidates=[];
   const rows=ROTATION_GROUPS.map(g=>{
     const sr=g.stocks.map(([c,n])=>{const flow=foreignCapitalFlow(im.get(c)||[],pm.get(c)||[]);
-      const setup=stockSetup(c,n,g.name,flow,pm.get(c)||[]);candidates.push(setup);return {c,n,...flow,setup};});
+      const trustFlow=institutionCapitalFlow(im.get(c)||[],pm.get(c)||[],"trust");
+      const pressure=sellPressureWeakening(im.get(c)||[],pm.get(c)||[]);
+      const setup=stockSetup(c,n,g.name,flow,pm.get(c)||[],trustFlow,pressure);candidates.push(setup);return {c,n,...flow,setup};});
     const dm={};sr.forEach(x=>(x.daily||[]).forEach(v=>dm[v.date]=(dm[v.date]||0)+v.value));
     const dates=Object.keys(dm).sort(), flow=dates.map(d=>({date:d,value:dm[d]}));
     const total=n=>flow.slice(-n).reduce((s,x)=>s+x.value,0);
@@ -1046,17 +1141,21 @@ async function loadRotation(force=false){
       flow5:flow.slice(-5),count:sr.filter(x=>x.daily?.length).length,
       leaders:sr.filter(x=>Number.isFinite(x.d1)).sort((a,b)=>b.d1-a.d1).slice(0,2),date:dates.at(-1)||""};
   }).filter(r=>r.count).sort((a,b)=>b.d1-a.d1);
+  if(rows.length<ROTATION_GROUPS.length&&fallback){renderRotation(fallback.rows,fallback.date,fallback.candidates||[]);if(meta)meta.textContent=`資料日 ${fallback.date||"—"} · FinMind 限流／資料不完整，使用舊快取`;return;}
+  if(!rows.length&&fallback){renderRotation(fallback.rows,fallback.date,fallback.candidates||[]);if(meta)meta.textContent=`資料日 ${fallback.date||"—"} · 更新失敗，保留上次結果`;return;}
   if(!rows.length){body.innerHTML=`<div class="note">族群資料暫時無法讀取。<button class="ghost" id="rotRetry" style="margin-left:8px;padding:4px 10px">重試</button></div>`;
     const rb=$("rotRetry"); if(rb) rb.onclick=()=>loadRotation(true); return;}
   const date=rows.map(r=>r.date).sort().pop();
-  try{localStorage.setItem(key,JSON.stringify({t:Date.now(),date,rows,candidates}));}catch(e){}
+  try{const payload={t:Date.now(),date,rows,candidates},saved=JSON.stringify(payload);if(usableRotationCache(payload)){localStorage.setItem(key,saved);localStorage.setItem(backupKey,saved);}}catch(e){}
   renderRotation(rows,date,candidates);
 }
 function renderRotation(rows,date,candidates=[]){
+  if(!Array.isArray(rows)||!rows.length)throw new Error("rotation rows empty");
+  rows=rows.map(r=>({...r,leaders:Array.isArray(r.leaders)?r.leaders:[],flow5:Array.isArray(r.flow5)?r.flow5:[]}));candidates=Array.isArray(candidates)?candidates.filter(Boolean):[];
   MARKET_MOOD={...MARKET_MOOD,rotation:rows.filter(r=>r.d1>0).length/rows.length,date:date||MARKET_MOOD.date}; renderMarketMood();
   const body=$("rotation-body"), meta=$("rotation-date"); if(!body)return;
   if(meta) meta.textContent=`資料日 ${date||"—"} · 外資估算淨流入`;
-  const money=v=>Number.isFinite(v)?`<span class="${cls(v)}">${v>0?"+":""}${v.toFixed(2)} 億</span>`:"—";
+  const money=v=>Number.isFinite(Number(v))?`<span class="${cls(Number(v))}">${Number(v)>0?"+":""}${Number(v).toFixed(2)} 億</span>`:"—";
   const table=rows.map((r,i)=>{const sig=rotationSignal(r); const leaders=r.leaders.map(x=>x.n).join("、");
     const days=r.flow5||[], peak=Math.max(1,...days.map(x=>Math.abs(x.value))), bw=34,gap=18,zero=27;
     const bars=days.map((x,j)=>{const h=Math.max(2,Math.abs(x.value)/peak*21),y=x.value>=0?zero-h:zero,color=x.value>=0?'var(--up)':'var(--down)',cx=8+j*(bw+gap);
@@ -1066,14 +1165,14 @@ function renderRotation(rows,date,candidates=[]){
     return `<tr><td class="rank">${i+1}</td><td class="sector-name">${r.name}<small>今日外資貢獻前二：${leaders||"—"}</small><div class="flow5">${flow}</div></td>
       <td>${money(r.d1)}</td><td>${money(r.d5)}</td><td>${money(r.d20)}</td><td><span class="signal ${sig.c}">${sig.t}</span></td></tr>`;}).join("");
   const top=rows[0], rising=rows.find(r=>rotationSignal(r).t==="轉為買超");
-  const picks=candidates.filter(x=>Number.isFinite(x.d5)&&Number.isFinite(x.d1)).sort((a,b)=>b.score-a.score||b.d5-a.d5).slice(0,10);
+  const picks=candidates.filter(x=>Number.isFinite(x.d5)&&Number.isFinite(x.d1)).sort((a,b)=>b.score-a.score||Number(!!b.pressure?.active)-Number(!!a.pressure?.active)||b.d5-a.d5).slice(0,10);
   const pickHtml=picks.map(x=>{const streak=x.streak?`外資連${x.dir>0?'買':'賣'} ${x.streak} 日`:"外資無連續方向";
     return `<div class="candidate" data-c="${x.code}"><div class="candidate-head"><span><small>${x.code}</small> ${x.name} <small>· ${x.group}</small></span><span class="candidate-grade">${x.grade}</span></div>
-      <div class="candidate-facts"><span class="${x.dir>0?'pos':x.dir<0?'neg':''}">${streak}</span><span class="${cls(x.d5)}">5日 ${x.d5>0?'+':''}${x.d5.toFixed(2)}億</span><span>${x.above?'站上月線':'月線下'}</span><span>${x.breakout?'突破20日高點':'未突破'}</span><span>量能 ${x.volRatio?x.volRatio.toFixed(1)+'倍':'—'}</span></div></div>`;}).join("");
+      <div class="candidate-facts"><span>評分 ${x.score}/7</span><span class="${x.pressure?.active?'pos':''}">${x.pressure?.active?'賣壓減弱':'賣壓未減'}</span><span class="${x.dir>0?'pos':x.dir<0?'neg':''}">${streak}</span><span class="${cls(x.d5)}">外資5日 ${x.d5>0?'+':''}${x.d5.toFixed(2)}億</span><span class="${x.trustConfirmed?'pos':''}">${x.trustConfirmed?`投信連買${x.trustStreak||0}日`:'投信未確認'}</span><span>${x.above?'站上月線':'月線下'}</span><span>${x.breakout?'突破20日高點':'未突破'}</span><span>量能 ${x.volRatio?x.volRatio.toFixed(1)+'倍':'—'}</span></div></div>`;}).join("")||`<div class="note">目前沒有可計算的候選股資料。</div>`;
   body.innerHTML=`<div class="tablewrap"><table><thead><tr><th class="rank">#</th><th style="text-align:left">族群</th><th>今日</th><th>5日</th><th>20日</th><th>狀態</th></tr></thead><tbody>${table}</tbody></table></div>
-    <div class="rotation-summary">今日外資淨流入最高為 <b>${top.name}</b>（${top.d1>0?"+":""}${top.d1.toFixed(2)} 億元）${rising?`；<b>${rising.name}</b> 由中期賣超轉為今日買超。`:"。"}</div>
+    <div class="rotation-summary">今日外資淨流入最高為 <b>${top.name}</b>（${Number(top.d1)>0?"+":""}${Number.isFinite(Number(top.d1))?Number(top.d1).toFixed(2):"—"} 億元）${rising?`；<b>${rising.name}</b> 由中期賣超轉為今日買超。`:"。"}</div>
     <div class="candidate-title">外資＋技術面候選股 <span class="tag live">即時</span></div><div class="candidate-grid">${pickHtml}</div>
-    <div class="note">候選排序綜合外資連買、近5日買超、站上20日均線、突破20日高點及量能放大；是研究篩選，不是買進建議。點選股票可查看K線與完整籌碼。</div>
+    <div class="note">候選區顯示排序前10名，先依7分制評分、同分時優先「賣壓減弱」測試因子，再依近5日外資流入排序。賣壓減弱不加分；評分 ≥${BUY_SCORE} 才屬偏多候選。這是研究篩選，不是買進建議。</div>
     <div class="note">圖中紅柱向上為買超、綠柱向下為賣超，柱長代表相對金額；游標移到柱子可看精確億元。「5日」是五根柱子的加總。估算方式：代表股外資淨買賣股數 × 當日收盤價後加總。<button class="ghost" id="rotRefresh" style="margin-left:8px;padding:4px 10px">重新計算</button></div>`;
   const rb=$("rotRefresh"); if(rb) rb.onclick=()=>loadRotation(true);
   bindFlowTooltips(body);
@@ -1124,16 +1223,48 @@ function renderHome(){
   if(RADAR_CACHE) renderRadar(RADAR_CACHE);
   bindWatchlist();
   loadMarket();
-  loadRotation();
+  loadRotation().catch(e=>{const body=$("rotation-body"),meta=$("rotation-date");if(meta)meta.textContent="暫時無法載入";if(body){body.innerHTML='<div class="note">族群輪動資料格式異常或API暫時不可用。<button class="ghost" id="rotRetrySafe" style="margin-left:8px;padding:4px 10px">重新載入</button></div>';const b=$("rotRetrySafe");if(b)b.onclick=()=>loadRotation(true);}});
 }
 
 /* ============ 個股詳細 ============ */
+function revenueYoYMetric(rows){
+  const a=(rows||[]).slice().sort((x,y)=>x.revenue_year-y.revenue_year||x.revenue_month-y.revenue_month),last=a.at(-1);if(!last)return null;
+  const prev=a.find(x=>Number(x.revenue_year)===Number(last.revenue_year)-1&&Number(x.revenue_month)===Number(last.revenue_month));
+  return prev&&Number(prev.revenue)?{value:(Number(last.revenue)/Number(prev.revenue)-1)*100,label:`${last.revenue_year}/${String(last.revenue_month).padStart(2,"0")}`} : null;
+}
+function grossMarginMetric(rows){
+  const by={};(rows||[]).forEach(x=>{if(!x.date)return;const o=String(x.origin_name||""),t=String(x.type||""),v=Number(x.value);if(!Number.isFinite(v))return;
+    const z=by[x.date]||={};if(t==="GrossProfit"||/營業毛利/.test(o))z.gross=v;
+    if(t==="Revenue"||t==="OperatingRevenue"||/營業收入合計|營業收入淨額/.test(o))z.revenue=v;
+  });
+  for(const date of Object.keys(by).sort().reverse()){const x=by[date];if(Number.isFinite(x.gross)&&x.revenue>0)return {value:x.gross/x.revenue*100,label:date};}
+  return null;
+}
+const medianMetric=a=>{const v=a.filter(Number.isFinite).sort((x,y)=>x-y);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:(v[m-1]+v[m])/2;};
+function peerList(code){const sec=SECTORS.find(s=>s.stocks.some(x=>x[0]===code)),all=sec?.stocks||[];return {name:sec?.name||"同類公司",stocks:[...all.filter(x=>x[0]===code),...all.filter(x=>x[0]!==code)].slice(0,6)};}
+async function loadPeerFundamentals(code,name,currentRev){
+  const box=$("peer-fund-body");if(!box)return;const peer=peerList(code),rows=[];box.innerHTML=`<div class="note">正在比較 ${peer.name}… 0 / ${peer.stocks.length}</div>`;
+  for(let i=0;i<peer.stocks.length;i+=2){
+    const part=peer.stocks.slice(i,i+2);await Promise.all(part.map(async ([c,n])=>{
+      try{const [rev,fs]=await Promise.all([c===code&&currentRev?.length?Promise.resolve(currentRev):fundamentalApi("TaiwanStockMonthRevenue",c,monthsAgo(26)),fundamentalApi("TaiwanStockFinancialStatements",c,monthsAgo(20))]);
+        rows.push({code:c,name:n,yoy:revenueYoYMetric(rev),gm:grossMarginMetric(fs)});
+      }catch(e){rows.push({code:c,name:n,yoy:null,gm:null});}
+    }));box.innerHTML=`<div class="note">正在比較 ${peer.name}… ${Math.min(i+2,peer.stocks.length)} / ${peer.stocks.length}</div>`;
+  }
+  const ymed=medianMetric(rows.map(x=>x.yoy?.value)),gmed=medianMetric(rows.map(x=>x.gm?.value));
+  const validY=rows.filter(x=>Number.isFinite(x.yoy?.value)).sort((a,b)=>b.yoy.value-a.yoy.value),validG=rows.filter(x=>Number.isFinite(x.gm?.value)).sort((a,b)=>b.gm.value-a.gm.value);
+  box.innerHTML=`<div class="panel-h"><span class="t">${peer.name}</span><span class="meta">族群中位數：營收 YoY ${ymed==null?'—':signed(ymed.toFixed(1))+'%'} · 毛利率 ${gmed==null?'—':gmed.toFixed(1)+'%'}</span></div>
+    <div class="tablewrap"><table><thead><tr><th>公司</th><th>最新月營收 YoY</th><th>族群排名</th><th>最新毛利率</th><th>族群排名</th><th>資料期</th></tr></thead><tbody>${rows.sort((a,b)=>a.code===code?-1:b.code===code?1:0).map(x=>{
+      const yr=validY.findIndex(y=>y.code===x.code)+1,gr=validG.findIndex(y=>y.code===x.code)+1;
+      return `<tr${x.code===code?' style="font-weight:700"':''}><td><span class="date">${x.code}</span> ${esc(x.name)}${x.code===code?'（本檔）':''}</td><td class="${cls(x.yoy?.value)}">${x.yoy?signed(x.yoy.value.toFixed(1))+'%':'—'}</td><td>${yr?`${yr} / ${validY.length}`:'—'}</td><td>${x.gm?x.gm.value.toFixed(1)+'%':'—'}</td><td>${gr?`${gr} / ${validG.length}`:'—'}</td><td class="date">${x.yoy?.label||x.gm?.label||'—'}</td></tr>`;}).join("")}</tbody></table></div>
+    <div class="note">營收年增率＝最新月營收相較去年同月；毛利率＝最新一期營業毛利÷營業收入。不同公司財報公告日可能不同，請以「資料期」核對。資料快取24小時，避免FinMind额度过快耗尽。</div>`;
+}
 async function showDetail(code){
   code=(code||"").trim(); if(!code) return;
   location.hash=code;
   view.innerHTML='<div class="status">載入中…</div>';
   try{
-    const [info, price, per, rev, inst, hold, news] = await Promise.all([
+    const [info, price, per, rev, inst, hold, news, taiex] = await Promise.all([
       fj("TaiwanStockInfo", code),
       fj("TaiwanStockPrice", code, monthsAgo(7)),
       fj("TaiwanStockPER", code, daysAgo(20)).catch(()=>[]),
@@ -1141,15 +1272,16 @@ async function showDetail(code){
       fj("TaiwanStockInstitutionalInvestorsBuySell", code, daysAgo(95)).catch(()=>[]),
       fj("TaiwanStockShareholding", code, daysAgo(95)).catch(()=>[]),
       fetchNews(code).catch(()=>[]),
+      fj("TaiwanStockPrice", "TAIEX", monthsAgo(7)).catch(()=>[]),
     ]);
     if((!price||!price.length) && (!info||!info.length)){
       view.innerHTML='<div class="status">查無此代碼資料，請確認股票代碼。</div>'; return; }
-    renderDetail(code, info, price, per, rev, inst, hold, news);
+    renderDetail(code, info, price, per, rev, inst, hold, news, taiex);
   }catch(e){ view.innerHTML='<div class="status">'+friendlyErr(e)+'<br><button class="ghost" id="dtRetry" style="margin-top:12px;padding:8px 16px">重試</button></div>';
     const rb=$("dtRetry"); if(rb) rb.onclick=()=>showDetail(code); }
 }
 
-function renderDetail(code, info, price, per, rev, inst, hold, news){
+function renderDetail(code, info, price, per, rev, inst, hold, news, taiex){
   codeEl.style.display="none";
   const nm=info?.[0]?.stock_name||"", ind=info?.[0]?.industry_category||"";
   const lp=price?.[price.length-1];
@@ -1195,6 +1327,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
       {barColor:v=>v>=0?"var(--f-trust)":"var(--down)", barTip:v=>signed(Math.round(v))+" 張",
        rightFmt:p=>num(p,p<50?1:0), lineTip:v=>"股價 "+num(v,2)+" 元"}):""}
     <div class="legend"><span><i style="background:var(--f-trust)"></i>投信單日淨買賣（張・左軸）</span><span><span class="li"></span>股價收盤（元・右軸）</span></div>
+    <div class="note">此圖套用法人持續性濾網；下方三大法人表保留交易所原始彙總數據，方便核對。公開資料無法識別個別帳戶，疑似當沖／隔日沖僅能依淨額占比與相鄰日反向沖銷近似排除。</div>
   </div>`;
 
   // 外資持股比例（免費資料僅有外資，非投信）
@@ -1216,7 +1349,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     <div class="dd ${cls(lp.spread)}">${lp.spread>0?'▲':lp.spread<0?'▼':''} ${Math.abs(lp.spread??0).toFixed(2)}</div></div>`:"";
   const vcard=(l,v,cap)=>`<div class="card"><div class="lbl">${l}</div><div class="val">${v}</div><div class="cap">${cap}</div></div>`;
 
-  // 即時新聞（每次開啟自動更新，來源 FinMind）
+  // 即時新聞（每 30 分鐘重新查詢，來源 FinMind）
   const seen={}; const nlist=(news||[]).filter(n=>{if(!n.link||seen[n.link])return false; seen[n.link]=1; return true;})
     .sort((a,b)=>a.date<b.date?1:-1).slice(0,7);
   const cleanT=(t,s)=> t.endsWith(" - "+s)? t.slice(0, t.length-(s.length+3)) : t;
@@ -1279,13 +1412,13 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
       <div class="ai-grid">
         <div class="ai-box"><h5 class="drv">▲ 成長動能</h5><ul>${nw.drv.map(x=>`<li>${x}</li>`).join("")}</ul></div>
         <div class="ai-box"><h5 class="rsk">▼ 風險 / 觀察</h5><ul>${nw.rsk.map(x=>`<li>${x}</li>`).join("")}</ul></div>
-      </div>`:`<p class="note">此檔尚未內建深度查證分析；上方「三面交叉分析」與下方「即時新聞」每次開啟皆自動更新。</p>`;
+      </div>`:`<p class="note">此檔尚未內建深度查證分析；上方「三面交叉分析」與下方「即時新聞」每30分鐘重新查詢。</p>`;
 
   const aiHtml=`<div class="panel">
       <div class="panel-h"><span class="t">新聞 / AI 分析</span></div>
       ${crossHtml}
       ${verifiedHtml}
-      <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞<span class="tag live">即時</span></span><span class="meta">每次開啟自動更新 · 來源 FinMind</span></div>
+      <div class="panel-h" style="margin-top:16px"><span class="t">即時新聞<span class="tag live">即時</span></span><span class="meta">每30分鐘重新查詢 · 來源 FinMind</span></div>
       ${liveNewsHtml}
     </div>`;
 
@@ -1301,7 +1434,7 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
       ${vcard("最新月營收 YoY", latestYoY!=null?`<span class="${cls(latestYoY)}">${signed(latestYoY.toFixed(1))}%</span>`:"–", latestRev?revLabels[revLabels.length-1]+" 月":"")}
     </div>
 
-    ${stockScoreHtml(code,nm,price,inst)}
+    ${stockScoreHtml(code,nm,price,inst,taiex)}
 
     ${watchEditorHtml(code,nm)}
 
@@ -1333,6 +1466,12 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     </div>
 
     <div class="panel">
+      <div class="panel-h"><span class="t">同類公司基本面比較<span class="tag live">按需</span></span><span class="meta">營收年增率 · 毛利率 · 族群排名</span></div>
+      <div id="peer-fund-body"><button class="radar-btn" id="peer-fund-go">載入同類公司比較</button>
+      <div class="note">為避免FinMind免费额度限制，不会在打开个股页时自动扫描；点击后查询本档与最多5家同子板块公司，并快取24小时。</div></div>
+    </div>
+
+    <div class="panel">
       <div class="panel-h"><span class="t">三大法人買賣超<span class="tag live">即時</span></span><span class="meta">近 10 日（長條：合計張數、折線：收盤價）</span></div>
       ${idates.length?comboChart(idates.map(mdLabel), instTot, instPrice, {barTip:v=>signed(v)+" 張", rightFmt:p=>p.toFixed(0), lineTip:v=>v}):'<div class="note">無法人資料</div>'}
       <div class="legend"><span><i style="background:var(--up)"></i>買超</span><span><i style="background:var(--down)"></i>賣超</span><span><span class="li"></span>收盤價</span></div>
@@ -1348,7 +1487,8 @@ function renderDetail(code, info, price, per, rev, inst, hold, news){
     ${holdHtml}`;
 
   $("back").onclick=()=>{location.hash=""; renderHome();};
-  bindWatchEditor(code,nm,()=>renderDetail(code,info,price,per,rev,inst,hold,news));
+  const pf=$("peer-fund-go");if(pf)pf.onclick=()=>loadPeerFundamentals(code,nm,rev);
+  bindWatchEditor(code,nm,()=>renderDetail(code,info,price,per,rev,inst,hold,news,taiex));
 }
 
 /* ============ 啟動 ============ */
@@ -1356,6 +1496,7 @@ $("go").onclick=()=>showDetail(codeEl.value);
 codeEl.addEventListener("keydown",e=>{if(e.key==="Enter")showDetail(codeEl.value);});
 $("home").onclick=()=>{location.hash=""; renderHome();};
 window.addEventListener("hashchange",()=>{const h=location.hash.slice(1); if(h) showDetail(h); else renderHome();});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&Date.now()-PAGE_OPENED_AT>=CACHE_TTL)location.reload();});
 const h0=location.hash.slice(1);
 if(h0) showDetail(h0); else renderHome();
 </script>
