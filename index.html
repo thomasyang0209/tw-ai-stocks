@@ -248,20 +248,20 @@ const $=id=>document.getElementById(id);
 const view=$("view"), codeEl=$("code");
 const PAGE_OPENED_AT=Date.now();
 const FRESHNESS={latest:"",fresh:new Set(),cached:new Map(),stale:new Map()};
-const AS_OF="2026-09-23";
+const AS_OF="2026-09-29";
 const BUY_SCORE=5;
 const FORECAST_DAYS=20;
 /* 每日大盤分析（客觀中立、經查證；由每日排程更新）*/
 const MARKET={
-  asOf:"2026-09-23",
-  summary:"9/23 台股加權指數終場收 48,157.29 點，上漲 357.12 點（+0.75%），總成交金額 8,946.51 億元；台積電上漲 40 元收 2,500 元。集中市場三大法人合計買超 383.79 億元，外資買超 373.13 億元、投信賣超 47.59 億元、自營商買超 58.25 億元。期交所外資臺股期貨交易淨賣超 518 口、未平倉淨空單增至 76,084 口。PCB／ABF、ASIC、記憶體偏強，AI Server 由鴻海撐盤；散熱、封測與電源分化，網通／CPO 偏弱。",
-  pos:["PCB／ABF 全面走強：欣興、南電、台光電與金像電均上漲；ASIC 的世芯-KY、創意、智原與力旺亦全數收高","記憶體代表股南亞科、華邦電、旺宏、群聯走揚；AI Server 則由鴻海上漲帶動，廣達、緯創與緯穎小幅回落","三大法人合計買超 383.79 億元、外資現貨買超 373.13 億元；外資臺股期貨未平倉淨空單為 76,084 口"],
-  neg:["網通／CPO 相對弱勢：智邦、華星光、聯亞與波若威皆收低；高檔族群個股分化仍大","散熱、封測與電源走勢分化：奇鋐、健策走高，但雙鴻、建準、力成、京元電子、光寶科收低，台達電與群電持平","AI Server 未全面同步：鴻海上漲，但廣達、緯創與緯穎收低；不宜以權值股表現推論整體族群"],
+  asOf:"2026-09-29",
+  summary:"9/29 台股加權指數終場收 47,631.96 點，下跌 392.64 點（-0.82%），成交金額約 7,850.39 億元；台積電平盤收 2,475 元。集中市場三大法人合計賣超 784.06 億元，外資賣超 625.83 億元、投信買超 5.79 億元、自營商賣超 164.03 億元。期交所外資臺股期貨交易淨賣超 2,277 口、未平倉淨空單約 79,029 口。記憶體與部分 PCB／ABF 相對有撐；AI Server、散熱、ASIC、封測、電源及網通／CPO 多偏弱或分化。",
+  pos:["記憶體相對有撐：旺宏上漲 1.28%、華邦電上漲 1.46%、南亞科上漲 0.60%，惟族群仍須留意高波動","PCB／ABF 走勢分化，南電上漲 2.42%、金像電上漲 1.36%，但欣興下跌 1.69%、台光電下跌 2.57%","AI Server 並非全面走弱：緯創上漲 0.54%、鴻海平盤；廣達下跌 0.59%、緯穎下跌 0.71%，呈現個股輪動"],
+  neg:["散熱偏弱：奇鋐下跌 4.36%、建準下跌 2.10%、健策下跌 0.36%；電源亦承壓，台達電下跌 3.93%、光寶科下跌 2.09%","ASIC 與封測賣壓較重：創意下跌 7.04%、世芯-KY 下跌 2.25%；京元電子下跌 5.30%、日月光投控下跌 1.72%","網通／CPO 偏弱，智邦下跌 4.48%、光聖下跌 1.96%；外資現貨賣超 625.83 億元，期貨淨空單約 79,029 口，籌碼保守"],
   items:[
-    {t:"9/23 加權指數日行情：收 48,157.29 點、上漲 357.12 點；總成交金額 8,946.51 億元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20260923&type=ALL&response=html"},
-    {t:"9/23 三大法人買賣金額：合計買超 383.79 億元，外資買超 373.13 億元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/fund/BFI82U?date=20260923&response=html"},
-    {t:"9/23 台積電日行情：上漲 40 元收 2,500 元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20260923&stockNo=2330&response=html"},
-    {t:"9/23 外資臺股期貨：交易淨賣超 518 口；未平倉淨空單 76,084 口",s:"臺灣期貨交易所",u:"https://www.taifex.com.tw/cht/3/futContractsDate?queryType=1&queryDate=2026%2F09%2F23"}
+    {t:"9/29 加權指數日行情：收 47,631.96 點、下跌 392.64 點；成交金額約 7,850.39 億元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date=20260929&type=ALL&response=html"},
+    {t:"9/29 三大法人買賣金額：集中市場合計賣超 784.06 億元，外資賣超 625.83 億元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/fund/BFI82U?date=20260929&response=html"},
+    {t:"9/29 台積電日行情：平盤收 2,475 元",s:"臺灣證券交易所",u:"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=20260929&stockNo=2330&response=html"},
+    {t:"9/29 外資臺股期貨：交易淨賣超 2,277 口；未平倉淨空單約 79,029 口",s:"臺灣期貨交易所",u:"https://www.taifex.com.tw/cht/3/futContractsDate?queryType=1&queryDate=2026%2F09%2F29"}
   ]
 };
 
